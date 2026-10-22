@@ -1,0 +1,15 @@
+package cn.nemo.qingxiao;
+import android.app.*;import android.content.*;import android.net.Uri;import android.media.*;import org.json.*;
+public class ReminderReceiver extends BroadcastReceiver {
+ public void onReceive(Context c,Intent in){try{synchronized(Store.class){String id=in.getStringExtra("id"),sid=in.getStringExtra("subtaskId");if(sid==null)sid="";JSONObject db=new JSONObject(Store.read(c)),parent=SyncEngine.find(db.getJSONArray("items"),id);if(parent==null||parent.optBoolean("done")||parent.optBoolean("deleted"))return;JSONObject target=sid.isEmpty()?parent:SyncEngine.find(parent.optJSONArray("subtasks"),sid);if(target==null||target.optBoolean("done"))return;String key=Reminders.key(id,sid);NotificationManager nm=c.getSystemService(NotificationManager.class);
+  if("snooze".equals(in.getAction())){target.put("remindAt",System.currentTimeMillis()+5*60000);parent.put("updatedAt",System.currentTimeMillis()).put("_dirty",true).put("_op",java.util.UUID.randomUUID().toString());Store.write(c,db.toString());nm.cancel(key,1);return;}
+  if(target.optLong("remindAt")!=in.getLongExtra("remindAt",-1))return;
+  boolean alarm="alarm".equals(target.optString("reminderStyle"));String channel=alarm?"task_alarm":"tasks";NotificationChannel nc=new NotificationChannel(channel,alarm?"事项闹钟铃声":"待办提醒",NotificationManager.IMPORTANCE_HIGH);if(alarm){nc.setSound(RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM),new AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ALARM).setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION).build());nc.enableVibration(true);}nm.createNotificationChannel(nc);
+  String title=sid.isEmpty()?parent.getString("title"):target.getString("text"),description=sid.isEmpty()?"轻效 Todo · 到时间了":"子任务 · "+parent.getString("title");
+  Intent open=new Intent(c,MainActivity.class).setData(Uri.parse("qingxiao://task/"+Uri.encode(key))).putExtra("itemId",id).putExtra("subtaskId",sid).setFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_CLEAR_TOP);
+  PendingIntent pi=PendingIntent.getActivity(c,0,open,PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);
+  Intent again=new Intent(c,ReminderReceiver.class).addFlags(Intent.FLAG_RECEIVER_FOREGROUND).setData(Uri.parse("qingxiao://snooze/"+Uri.encode(key))).setAction("snooze").putExtra("id",id).putExtra("subtaskId",sid);
+  PendingIntent snooze=PendingIntent.getBroadcast(c,0,again,PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);
+  Notification n=new Notification.Builder(c,channel).setSmallIcon(R.drawable.ic_notification).setContentTitle(title).setContentText(description).setStyle(new Notification.BigTextStyle().bigText(title+"\n"+description)).setCategory(alarm?Notification.CATEGORY_ALARM:Notification.CATEGORY_REMINDER).setContentIntent(pi).addAction(new Notification.Action.Builder(null,"5分钟后提醒",snooze).build()).setAutoCancel(true).build();nm.notify(key,1,n);
+ }}catch(Exception e){android.util.Log.e("Qingxiao","Reminder failed",e);}}
+}

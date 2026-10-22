@@ -1,0 +1,28 @@
+# Build products and local tools
+**/build/
+**/node_modules/
+**/dist/
+**/.next/
+**/.wrangler/
+**/.sites-runtime/
+**/coverage/
+*.tsbuildinfo
+.DS_Store
+
+# Private signing material, credentials and device data
+**/signing/
+*.jks
+*.keystore
+*.pem
+*.key
+.env*
+**/.env*
+**/.dev.vars*
+**/sync-config*
+**/cloud-config*
+**/tasks.json
+**/snapshots/
+
+# Distribute binaries through GitHub Releases
+*.apk
+*.zip
