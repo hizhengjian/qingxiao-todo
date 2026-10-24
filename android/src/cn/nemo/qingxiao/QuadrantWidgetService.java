@@ -8,10 +8,10 @@ import java.text.SimpleDateFormat;
 import java.util.*;
 
 public class QuadrantWidgetService extends RemoteViewsService {
- @Override public RemoteViewsFactory onGetViewFactory(Intent intent){return new Factory(getApplicationContext(),intent.getIntExtra("quadrant",0));}
+ @Override public RemoteViewsFactory onGetViewFactory(Intent intent){return new Factory(getApplicationContext(),intent.getIntExtra("quadrant",0),intent.getBooleanExtra("expanded",false));}
  static class Factory implements RemoteViewsFactory {
-  final Context c;final int quadrant;List<JSONObject> rows=new ArrayList<>();
-  Factory(Context context,int q){c=context;quadrant=q;}
+  final Context c;final int quadrant;final boolean expanded;List<JSONObject> rows=new ArrayList<>();
+  Factory(Context context,int q,boolean full){c=context;quadrant=q;expanded=full;}
   public void onCreate(){onDataSetChanged();}
   public synchronized void onDataSetChanged(){rows=new ArrayList<>();try{for(JSONObject t:QuadrantWidget.tasks(c))if(t.optInt("quadrant")==quadrant)rows.add(t);}catch(Exception e){/* Provider shows the read-error state. */}}
   public synchronized void onDestroy(){rows.clear();}
@@ -21,7 +21,9 @@ public class QuadrantWidgetService extends RemoteViewsService {
    if(AppLock.enabled(c)||position<0||position>=rows.size()){v.setTextViewText(R.id.task_title,"");v.setViewVisibility(R.id.task_meta,View.GONE);return v;}
    JSONObject t=rows.get(position);String title=t.optString("title");
    // Avoid an oversized Binder parcel from a very long task title or project name.
-   v.setTextViewText(R.id.task_title,"○  "+clip(title,160));
+   v.setTextViewText(R.id.task_title,"○  "+clip(title,expanded?1024:240));
+   v.setInt(R.id.task_title,"setMaxLines",expanded?20:3);
+   v.setInt(R.id.task_meta,"setMaxLines",expanded?2:1);
    List<String> meta=new ArrayList<>();long due=t.optLong("dueAt");
    if(due>0)meta.add((due<System.currentTimeMillis()?"逾期 · ":"")+new SimpleDateFormat(t.optBoolean("allDay")?"M/d":"M/d HH:mm",Locale.CHINA).format(new Date(due)));
    JSONArray subs=t.optJSONArray("subtasks");if(subs!=null&&subs.length()>0){int done=0;for(int i=0;i<subs.length();i++)if(subs.optJSONObject(i)!=null&&subs.optJSONObject(i).optBoolean("done"))done++;meta.add("子任务 "+done+"/"+subs.length());}

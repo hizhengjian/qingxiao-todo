@@ -14,6 +14,9 @@ import java.util.*;
 /** Local-only launcher widget. No account or network credentials cross this boundary. */
 public class QuadrantWidget extends AppWidgetProvider {
  static final String REFRESH="cn.nemo.qingxiao.WIDGET_REFRESH";
+ static final String FOCUS="cn.nemo.qingxiao.WIDGET_FOCUS";
+ static final int[] SWITCHES={R.id.switch0,R.id.switch1,R.id.switch2,R.id.switch3};
+ static final int[] BACKGROUNDS={R.drawable.widget_q0,R.drawable.widget_q1,R.drawable.widget_q2,R.drawable.widget_q3};
  static final int[] LISTS={R.id.list0,R.id.list1,R.id.list2,R.id.list3};
  static final int[] EMPTY={R.id.empty0,R.id.empty1,R.id.empty2,R.id.empty3};
  static final int[] HEADS={R.id.head0,R.id.head1,R.id.head2,R.id.head3};
@@ -41,6 +44,12 @@ public class QuadrantWidget extends AppWidgetProvider {
  static PendingIntent open(Context c,int q,boolean add){
   return PendingIntent.getActivity(c,100+q*2+(add?1:0),target(c,q,add),PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);
  }
+ static PendingIntent focus(Context c,int widgetId,int q){
+  Intent intent=new Intent(c,QuadrantWidget.class).setAction(FOCUS)
+   .setData(Uri.parse("qingxiao://widget-focus/"+widgetId+"/"+q))
+   .putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID,widgetId).putExtra("quadrant",q);
+  return PendingIntent.getBroadcast(c,300,intent,PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);
+ }
  public static void refresh(Context c){
   // Refresh failures must never turn a successful task save into an apparent failure.
   try{AppWidgetManager m=AppWidgetManager.getInstance(c);int[] ids=m.getAppWidgetIds(new ComponentName(c,QuadrantWidget.class));update(c,m,ids);}catch(Exception e){android.util.Log.w("QingxiaoWidget","Widget refresh unavailable");}
@@ -51,19 +60,22 @@ public class QuadrantWidget extends AppWidgetProvider {
   try{tasks=tasks(c);}catch(Exception e){failed=true;}
   int[] counts=new int[4];for(JSONObject t:tasks){int q=t.optInt("quadrant",-1);if(q>=0&&q<4)counts[q]++;}
   for(int id:ids){
+   int selected=c.getSharedPreferences("widget-view",0).getInt("focus:"+id,-1);
+   if(selected<0||selected>3)selected=-1;
    RemoteViews v=new RemoteViews(c.getPackageName(),R.layout.quadrant_widget);
    v.setTextViewText(R.id.widget_date,new SimpleDateFormat("M月d日 E",Locale.CHINA).format(new Date())+(locked||failed?"":" · "+tasks.size()+" 项待办"));
-   v.setViewVisibility(R.id.widget_matrix,locked||failed?View.GONE:View.VISIBLE);
+   v.setViewVisibility(R.id.widget_matrix,locked||failed||selected>=0?View.GONE:View.VISIBLE);
+   v.setViewVisibility(R.id.widget_focus,!locked&&!failed&&selected>=0?View.VISIBLE:View.GONE);
    v.setViewVisibility(R.id.widget_notice,locked||failed?View.VISIBLE:View.GONE);
    v.setTextViewText(R.id.widget_notice,locked?"应用密码保护已开启\n点此进入应用查看事项":"暂时无法读取事项\n点此进入应用检查");
    v.setOnClickPendingIntent(R.id.widget_notice,open(c,-1,false));
    v.setOnClickPendingIntent(R.id.widget_title,open(c,-1,false));
-   v.setTextViewText(R.id.widget_hint,locked?"为保护隐私，桌面不展示事项内容":"各象限可上下滑动 · 点标题展开 · ＋新增");
+   v.setTextViewText(R.id.widget_hint,locked?"为保护隐私，桌面不展示事项内容":selected>=0?"点色块切换 · 总览返回 · 列表可上下滑动":"各象限可上下滑动 · 点标题放大 · ＋新增");
    Intent refresh=new Intent(c,QuadrantWidget.class).setAction(REFRESH);
    v.setOnClickPendingIntent(R.id.widget_refresh,PendingIntent.getBroadcast(c,200,refresh,PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE));
    for(int q=0;q<4;q++){
     v.setTextViewText(HEADS[q],LABELS[q]+"\n"+counts[q]+" 项");
-    v.setOnClickPendingIntent(HEADS[q],open(c,q,false));
+    v.setOnClickPendingIntent(HEADS[q],focus(c,id,q));
     v.setOnClickPendingIntent(ADDS[q],open(c,q,true));
     v.setTextViewText(EMPTY[q],"暂无待办\n点 ＋ 添加");
     v.setOnClickPendingIntent(EMPTY[q],open(c,q,true));
@@ -73,18 +85,41 @@ public class QuadrantWidget extends AppWidgetProvider {
     // Collection rows supply itemId through a fill-in Intent. The component is explicit.
     v.setPendingIntentTemplate(LISTS[q],PendingIntent.getActivity(c,1000+id*4+q,target(c,q,false).setData(Uri.parse("qingxiao://widget-row/"+id+"/"+q)),PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_MUTABLE));
    }
+   if(selected>=0){
+    v.setInt(R.id.widget_focus,"setBackgroundResource",BACKGROUNDS[selected]);
+    v.setTextViewText(R.id.focus_title,LABELS[selected]+" · "+counts[selected]+" 项");
+    v.setOnClickPendingIntent(R.id.focus_back,focus(c,id,-1));
+    v.setOnClickPendingIntent(R.id.focus_add,open(c,selected,true));
+    v.setOnClickPendingIntent(R.id.focus_empty,open(c,selected,true));
+    for(int q=0;q<4;q++)v.setOnClickPendingIntent(SWITCHES[q],focus(c,id,q));
+    Intent adapter=new Intent(c,QuadrantWidgetService.class).putExtra("quadrant",selected).putExtra("expanded",true)
+     .setData(Uri.parse("qingxiao://widget-expanded/"+id+"/"+selected));
+    v.setRemoteAdapter(R.id.focus_list,adapter);v.setEmptyView(R.id.focus_list,R.id.focus_empty);
+    v.setPendingIntentTemplate(R.id.focus_list,PendingIntent.getActivity(c,5000+id*4+selected,target(c,selected,false).setData(Uri.parse("qingxiao://expanded-row/"+id+"/"+selected)),PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_MUTABLE));
+   }
    manager.updateAppWidget(id,v);
    for(int list:LISTS)manager.notifyAppWidgetViewDataChanged(id,list);
+   if(selected>=0)manager.notifyAppWidgetViewDataChanged(id,R.id.focus_list);
   }
  }
  @Override public void onUpdate(Context c,AppWidgetManager m,int[] ids){update(c,m,ids);}
  @Override public void onAppWidgetOptionsChanged(Context c,AppWidgetManager m,int id,Bundle options){update(c,m,new int[]{id});}
- @Override public void onReceive(Context c,Intent intent){super.onReceive(c,intent);String action=intent.getAction();if(REFRESH.equals(action)||Intent.ACTION_DATE_CHANGED.equals(action)||Intent.ACTION_TIME_CHANGED.equals(action)||Intent.ACTION_TIMEZONE_CHANGED.equals(action))refresh(c);}
+ @Override public void onReceive(Context c,Intent intent){
+  super.onReceive(c,intent);String action=intent.getAction();
+  if(FOCUS.equals(action)){
+   int id=intent.getIntExtra(AppWidgetManager.EXTRA_APPWIDGET_ID,-1),q=intent.getIntExtra("quadrant",-1);
+   AppWidgetManager m=AppWidgetManager.getInstance(c);AppWidgetProviderInfo info=m.getAppWidgetInfo(id);
+   if(q>=-1&&q<=3&&info!=null&&new ComponentName(c,QuadrantWidget.class).equals(info.provider)){
+    c.getSharedPreferences("widget-view",0).edit().putInt("focus:"+id,q).apply();update(c,m,new int[]{id});
+   }
+  }else if(REFRESH.equals(action)||Intent.ACTION_DATE_CHANGED.equals(action)||Intent.ACTION_TIME_CHANGED.equals(action)||Intent.ACTION_TIMEZONE_CHANGED.equals(action))refresh(c);
+ }
+ @Override public void onDeleted(Context c,int[] ids){android.content.SharedPreferences.Editor edit=c.getSharedPreferences("widget-view",0).edit();for(int id:ids)edit.remove("focus:"+id);edit.apply();}
 
  static void showSettings(Activity a){
   AppWidgetManager m=AppWidgetManager.getInstance(a);
-  String help="在桌面直接查看四象限，每个象限可上下滑动。点事项查看详情，点 ＋ 在对应象限新增。\n\n长按桌面上的小组件可调整大小。应用保存或收到同步数据后会自动刷新；右上角 ↻ 重新读取本机数据。\n\n开启应用密码时，桌面会隐藏事项内容。";
-  AlertDialog.Builder dialog=new AlertDialog.Builder(a).setTitle("四象限桌面小组件").setMessage(help).setNegativeButton("关闭",null);
+  String help="在桌面直接查看四象限。点象限标题可在小组件内放大，点颜色按钮切换，点「总览」返回四块。每个列表都能上下滑动，点事项打开详情，点 ＋ 新增。\n\n默认使用较大的尺寸。已有小组件不会自动改变位置，请长按它并拖动边框，拉满空白桌面。应用保存或收到同步数据后会自动刷新。\n\n开启应用密码时，桌面会隐藏事项内容。";
+  AlertDialog.Builder dialog=new AlertDialog.Builder(a).setTitle("四象限桌面小组件").setMessage(help).setNegativeButton("关闭",null).setNeutralButton("手动添加方法",(d,w)->manual(a));
   if(m.isRequestPinAppWidgetSupported())dialog.setPositiveButton("添加到桌面",(d,w)->{
    try{if(!m.requestPinAppWidget(new ComponentName(a,QuadrantWidget.class),null,null))manual(a);}catch(Exception e){manual(a);}
   });else dialog.setPositiveButton("查看添加方法",(d,w)->manual(a));
