@@ -1,0 +1,6 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="cn.nemo.qingxiao.widgetqa">
+ <uses-sdk android:minSdkVersion="26" android:targetSdkVersion="34"/>
+ <application android:label="Widget layout QA" android:theme="@android:style/Theme.Material.Light.NoActionBar" android:allowBackup="false">
+  <activity android:name=".HostActivity" android:exported="true" android:launchMode="singleTop"/>
+ </application>
+</manifest>
