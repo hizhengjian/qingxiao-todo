@@ -26,3 +26,7 @@
 # Distribute binaries through GitHub Releases
 *.apk
 *.zip
+
+# Local browser test output
+/test-results/
+**/.vinext/

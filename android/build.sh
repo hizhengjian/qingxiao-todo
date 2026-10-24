@@ -3,7 +3,7 @@ set -euo pipefail
 cd "$(dirname "$0")"
 export JAVA_HOME="${JAVA_HOME:-/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home}"
 export PATH="$JAVA_HOME/bin:$PATH"
-SDK="${ANDROID_HOME:-/Users/nemo/Documents/Codex/2026-10-14/https-github-com-duartesantos8-opengym-https-2/work/android-sdk}"
+SDK="${ANDROID_HOME:?Set ANDROID_HOME to your Android SDK directory}"
 BT="$SDK/build-tools/35.0.0"
 KEY_PASSWORD="${QINGXIAO_KEYSTORE_PASSWORD:?Set QINGXIAO_KEYSTORE_PASSWORD from the internal resource ledger}"
 KEYSTORE_PATH="${QINGXIAO_KEYSTORE_PATH:-signing/release.jks}"
@@ -17,6 +17,6 @@ jar cf build/classes.jar -C build/classes .
 cp build/base.apk build/unsigned.apk
 (cd build/dex && zip -q -u ../unsigned.apk classes.dex)
 "$BT/zipalign" -f 4 build/unsigned.apk build/aligned.apk
-"$BT/apksigner" sign --ks "$KEYSTORE_PATH" --ks-pass env:QINGXIAO_KEYSTORE_PASSWORD --out build/qingxiao-todo-2.2.1.apk build/aligned.apk
-"$BT/apksigner" verify --verbose build/qingxiao-todo-2.2.1.apk
-shasum -a 256 build/qingxiao-todo-2.2.1.apk
+"$BT/apksigner" sign --ks "$KEYSTORE_PATH" --ks-pass env:QINGXIAO_KEYSTORE_PASSWORD --out build/qingxiao-todo-2.3.0.apk build/aligned.apk
+"$BT/apksigner" verify --verbose build/qingxiao-todo-2.3.0.apk
+shasum -a 256 build/qingxiao-todo-2.3.0.apk

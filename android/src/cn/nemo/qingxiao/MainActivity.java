@@ -35,6 +35,7 @@ public class MainActivity extends Activity {
  public void onBackPressed(){web.evaluateJavascript("handleBack()",v->{if(!"true".equals(v))MainActivity.super.onBackPressed();});}
  void callback(String fn,String data){runOnUiThread(()->web.evaluateJavascript(fn+"("+JSONObject.quote(data)+")",null));}
  class Bridge {
+  @JavascriptInterface public void haptic(String kind){runOnUiThread(()->web.performHapticFeedback("hold".equals(kind)?android.view.HapticFeedbackConstants.LONG_PRESS:android.view.HapticFeedbackConstants.CLOCK_TICK));}
   @JavascriptInterface public void pickPhoto(){runOnUiThread(()->{try{startActivityForResult(new Intent(Intent.ACTION_OPEN_DOCUMENT).setType("image/*").addCategory(Intent.CATEGORY_OPENABLE),13);}catch(Exception e){callback("toast","手机没有可用的相册选择器");}});}
   @JavascriptInterface public String readPhoto(String id){return Photos.read(MainActivity.this,id);}
   @JavascriptInterface public void requestPhotos(String ids){syncExecutor.execute(()->{try{Photos.sync(MainActivity.this,new JSONArray(ids));callback("onNativePhotos","{}");}catch(Exception e){callback("onNativePhotos","{\"error\":"+JSONObject.quote(e.getMessage())+"}");}});}
