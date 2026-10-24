@@ -28,13 +28,27 @@ public class MainActivity extends Activity {
   });
   try{web.loadDataWithBaseURL("https://qingxiao.local/",Store.stream(getAssets().open("index.html")),"text/html","UTF-8",null);}catch(Exception e){new AlertDialog.Builder(this).setMessage("启动失败："+e.getMessage()).show();}
  }
- void handleIntent(){if(!pageReady)return;Intent intent=getIntent();String id=intent.getStringExtra("itemId"),sid=intent.getStringExtra("subtaskId");if(intent.getBooleanExtra("review",false))web.evaluateJavascript("go(\"timesheet\")",null);if(intent.getBooleanExtra("focus",false))web.evaluateJavascript("go(\"pomodoro\")",null);if(id!=null)web.evaluateJavascript("openItem("+JSONObject.quote(id)+","+JSONObject.quote(sid==null?"":sid)+")",null);intent.removeExtra("itemId");intent.removeExtra("subtaskId");intent.removeExtra("review");intent.removeExtra("focus");}
+ void handleIntent(){
+  if(!pageReady||!foreground||unlocking||(AppLock.enabled(this)&&(backgroundAt==0||System.currentTimeMillis()-backgroundAt>60000)))return;
+  Intent intent=getIntent();String id=intent.getStringExtra("itemId"),sid=intent.getStringExtra("subtaskId");
+  if(intent.getBooleanExtra("widget",false)){
+   web.evaluateJavascript("openWidgetTarget("+intent.getIntExtra("widgetQ",-1)+","+intent.getBooleanExtra("widgetAdd",false)+","+JSONObject.quote(id==null?"":id)+")",null);
+   intent.removeExtra("widget");intent.removeExtra("widgetQ");intent.removeExtra("widgetAdd");
+  }else{
+   if(intent.getBooleanExtra("review",false))web.evaluateJavascript("go(\"timesheet\")",null);
+   if(intent.getBooleanExtra("focus",false))web.evaluateJavascript("go(\"pomodoro\")",null);
+   if(id!=null)web.evaluateJavascript("openItem("+JSONObject.quote(id)+","+JSONObject.quote(sid==null?"":sid)+")",null);
+  }
+  intent.removeExtra("itemId");intent.removeExtra("subtaskId");intent.removeExtra("review");intent.removeExtra("focus");
+ }
  protected void onNewIntent(Intent intent){super.onNewIntent(intent);setIntent(intent);handleIntent();}
  protected void onPause(){super.onPause();foreground=false;backgroundAt=System.currentTimeMillis();}
- protected void onResume(){super.onResume();foreground=true;if(AppLock.enabled(this)&&!unlocking&&(backgroundAt==0||System.currentTimeMillis()-backgroundAt>60000)){unlocking=true;web.setVisibility(android.view.View.INVISIBLE);AppLock.unlock(this,()->{unlocking=false;web.setVisibility(android.view.View.VISIBLE);});}Reminders.sync(this);TimerEngine.restore(this);}
+ protected void onResume(){super.onResume();foreground=true;if(AppLock.enabled(this)&&!unlocking&&(backgroundAt==0||System.currentTimeMillis()-backgroundAt>60000)){unlocking=true;web.setVisibility(android.view.View.INVISIBLE);AppLock.unlock(this,()->{unlocking=false;backgroundAt=System.currentTimeMillis();web.setVisibility(android.view.View.VISIBLE);handleIntent();});}handleIntent();Reminders.sync(this);TimerEngine.restore(this);}
  public void onBackPressed(){web.evaluateJavascript("handleBack()",v->{if(!"true".equals(v))MainActivity.super.onBackPressed();});}
  void callback(String fn,String data){runOnUiThread(()->web.evaluateJavascript(fn+"("+JSONObject.quote(data)+")",null));}
  class Bridge {
+  @JavascriptInterface public String appVersion(){try{return getPackageManager().getPackageInfo(getPackageName(),0).versionName;}catch(Exception e){return "2.4";}}
+  @JavascriptInterface public void widgetSettings(){runOnUiThread(()->QuadrantWidget.showSettings(MainActivity.this));}
   @JavascriptInterface public void haptic(String kind){runOnUiThread(()->web.performHapticFeedback("hold".equals(kind)?android.view.HapticFeedbackConstants.LONG_PRESS:android.view.HapticFeedbackConstants.CLOCK_TICK));}
   @JavascriptInterface public void pickPhoto(){runOnUiThread(()->{try{startActivityForResult(new Intent(Intent.ACTION_OPEN_DOCUMENT).setType("image/*").addCategory(Intent.CATEGORY_OPENABLE),13);}catch(Exception e){callback("toast","手机没有可用的相册选择器");}});}
   @JavascriptInterface public String readPhoto(String id){return Photos.read(MainActivity.this,id);}

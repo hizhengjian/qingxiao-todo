@@ -256,7 +256,16 @@
     if (Date.now() < suppressClickUntil && e.detail !== 0 && !e.target.closest('.swipe-action,#toast')) { e.preventDefault(); e.stopImmediatePropagation(); return; }
     if (opened && !e.target.closest('.swipe-action')) {
       const same = e.target.closest('.task-swipe') === opened; closeSwipe();
-      if (same) { e.preventDefault(); e.stopImmediatePropagation(); }
+      if (same) { e.preventDefault(); e.stopImmediatePropagation(); return; }
+    }
+    // Overview taps expand the quadrant; explicit controls remain immediate.
+    const quadrant = e.target.closest('#main .quadrant');
+    if (view === 'matrix' && matrixFocus < 0 && quadrant && $('overlay').hidden) {
+      const control = e.target.closest('button,input,textarea,select,a,form');
+      if (!control || control.classList.contains('task-open')) {
+        e.preventDefault(); e.stopImmediatePropagation();
+        expandQuadrant(Number(quadrant.dataset.quadrant));
+      }
     }
   }, true);
   window.addEventListener('blur', () => { cancel(); closeSwipe(); });
@@ -287,7 +296,7 @@
   };
   window.QGestures = {act: action, cancel, close: closeSwipe};
   window.gestureHelp = function () {
-    show('事项快捷操作', '<div class="gesture-guide"><p><strong>长按后拖动</strong><br>按住事项约半秒，再拖到另一种颜色；看到边框高亮后松手。象限放大时也能拖到旁边的颜色条。</p><p><strong>右滑完成 · 左滑删除</strong><br>轻滑显示按钮，点击执行；滑得更远，看到“松手完成 / 删除”后松手即可执行。</p><p><strong>操作可以撤销</strong><br>完成、删除、移动后，10秒内点底部“撤销”；连续操作可逐步撤销。删除的事项也可以在设置里的回收站恢复。</p><p><strong>上下滑动照常滚动</strong><br>完成按钮、番茄按钮和更多菜单都可以直接点击。电脑也可以长按拖动，或用 Ctrl / ⌘ + Z 撤销。</p></div>');
+    show('事项快捷操作', '<div class="gesture-guide"><p><strong>点一下放大象限</strong><br>总览中点事项文字或空白区域放大，再点事项查看详情。点其他颜色条切换，点收起按钮返回总览。</p><p><strong>长按后拖动</strong><br>按住事项约半秒，再拖到另一种颜色；看到边框高亮后松手。象限放大时也能拖到旁边的颜色条。</p><p><strong>右滑完成 · 左滑删除</strong><br>轻滑显示按钮，点击执行；滑得更远，看到“松手完成 / 删除”后松手即可执行。</p><p><strong>操作可以撤销</strong><br>完成、删除、移动后，10秒内点底部“撤销”；连续操作可逐步撤销。删除的事项也可以在设置里的回收站恢复。</p><p><strong>上下滑动照常滚动</strong><br>完成按钮、番茄按钮和更多菜单都可以直接点击。电脑也可以长按拖动，或用 Ctrl / ⌘ + Z 撤销。</p></div>');
   };
   const previousMatrix = matrixHtml;
   matrixHtml = function () {

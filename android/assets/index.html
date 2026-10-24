@@ -286,7 +286,7 @@ function finishChoice(action,id='',sid=''){closePanel(true);if(action==='done'){
 tick=function(){let prior=timer;originalTick();if(prior&&!timer){let s=db.sessions.find(x=>x.id==='session:'+prior.id);if(s?.status==='completed'&&s.mode==='focus'){pendingFinish=s;showFinish();}}};
 /* Preserve focus and use keyboard commands only outside form controls. */
 document.addEventListener('keydown',e=>{if(e.key==='Escape'){if(document.querySelector('.photo-viewer'))document.querySelector('.photo-viewer').remove();else handleBack();return;}if((e.ctrlKey||e.metaKey)&&e.key==='Enter'&&$('edit-title')){e.preventDefault();commitItem();return;}if(e.target.closest('input,textarea,select,[contenteditable]')||!$('overlay').hidden)return;if(e.key.toLowerCase()==='n'){e.preventDefault();addForView();}if(e.key==='/'){e.preventDefault();go('search');$('search')?.focus();}});
-const originalSettings=settings;settings=function(){originalSettings();let body=$('panel').querySelector('.panel-body');body.innerHTML=body.innerHTML.replace('2.1','2.3').replace('导出完整备份','导出事项与时间数据').replace('包含任务、子任务、番茄时间与分类；不含登录凭据。','包含事项、日程、照片引用与时间记录；照片文件通过私有云单独同步。');};
+const originalSettings=settings;settings=function(){originalSettings();let body=$('panel').querySelector('.panel-body');body.innerHTML=body.innerHTML.replace('2.1','2.4').replace('导出完整备份','导出事项与时间数据').replace('包含任务、子任务、番茄时间与分类；不含登录凭据。','包含事项、日程、照片引用与时间记录；照片文件通过私有云单独同步。');};
 render();
 </script><script>/* Shared touch/mouse interactions. Touch scrolling stays native until a gesture wins. */
 (function () {
@@ -546,7 +546,16 @@ render();
     if (Date.now() < suppressClickUntil && e.detail !== 0 && !e.target.closest('.swipe-action,#toast')) { e.preventDefault(); e.stopImmediatePropagation(); return; }
     if (opened && !e.target.closest('.swipe-action')) {
       const same = e.target.closest('.task-swipe') === opened; closeSwipe();
-      if (same) { e.preventDefault(); e.stopImmediatePropagation(); }
+      if (same) { e.preventDefault(); e.stopImmediatePropagation(); return; }
+    }
+    // Overview taps expand the quadrant; explicit controls remain immediate.
+    const quadrant = e.target.closest('#main .quadrant');
+    if (view === 'matrix' && matrixFocus < 0 && quadrant && $('overlay').hidden) {
+      const control = e.target.closest('button,input,textarea,select,a,form');
+      if (!control || control.classList.contains('task-open')) {
+        e.preventDefault(); e.stopImmediatePropagation();
+        expandQuadrant(Number(quadrant.dataset.quadrant));
+      }
     }
   }, true);
   window.addEventListener('blur', () => { cancel(); closeSwipe(); });
@@ -577,12 +586,44 @@ render();
   };
   window.QGestures = {act: action, cancel, close: closeSwipe};
   window.gestureHelp = function () {
-    show('事项快捷操作', '<div class="gesture-guide"><p><strong>长按后拖动</strong><br>按住事项约半秒，再拖到另一种颜色；看到边框高亮后松手。象限放大时也能拖到旁边的颜色条。</p><p><strong>右滑完成 · 左滑删除</strong><br>轻滑显示按钮，点击执行；滑得更远，看到“松手完成 / 删除”后松手即可执行。</p><p><strong>操作可以撤销</strong><br>完成、删除、移动后，10秒内点底部“撤销”；连续操作可逐步撤销。删除的事项也可以在设置里的回收站恢复。</p><p><strong>上下滑动照常滚动</strong><br>完成按钮、番茄按钮和更多菜单都可以直接点击。电脑也可以长按拖动，或用 Ctrl / ⌘ + Z 撤销。</p></div>');
+    show('事项快捷操作', '<div class="gesture-guide"><p><strong>点一下放大象限</strong><br>总览中点事项文字或空白区域放大，再点事项查看详情。点其他颜色条切换，点收起按钮返回总览。</p><p><strong>长按后拖动</strong><br>按住事项约半秒，再拖到另一种颜色；看到边框高亮后松手。象限放大时也能拖到旁边的颜色条。</p><p><strong>右滑完成 · 左滑删除</strong><br>轻滑显示按钮，点击执行；滑得更远，看到“松手完成 / 删除”后松手即可执行。</p><p><strong>操作可以撤销</strong><br>完成、删除、移动后，10秒内点底部“撤销”；连续操作可逐步撤销。删除的事项也可以在设置里的回收站恢复。</p><p><strong>上下滑动照常滚动</strong><br>完成按钮、番茄按钮和更多菜单都可以直接点击。电脑也可以长按拖动，或用 Ctrl / ⌘ + Z 撤销。</p></div>');
   };
   const previousMatrix = matrixHtml;
   matrixHtml = function () {
     return previousMatrix().replace('</small></div>', '</small><button class="gesture-help" aria-label="事项手势说明" onclick="gestureHelp()">?</button></div>');
   };
   render();
+})();
+</script><script>/* Android-only UI. The web app does not expose launcher controls. */
+(() => {
+  if (!native || typeof Native.widgetSettings !== 'function') return;
+  const baseSettings = settings;
+  settings = function () {
+    baseSettings();
+    const body = $('panel').querySelector('.panel-body');
+    body.querySelector('strong').textContent = '轻效 Todo · ' + Native.appVersion();
+    const row = document.createElement('div');
+    row.className = 'settings-row';
+    row.innerHTML = '<button onclick="Native.widgetSettings()">▦ 四象限桌面小组件</button><small>在手机桌面查看待办，支持滚动、点开事项与快速新增。</small>';
+    body.children[0].after(row);
+  };
+  window.openWidgetTarget = function (q, add, id) {
+    if (!$('overlay').hidden) document.activeElement?.blur();
+    if (dirty && !confirm('放弃未保存的修改，打开桌面事项？')) return;
+    // A pending textarea change must not mark the closed editor dirty again.
+    $('panel').oninput = null;
+    $('panel').onchange = null;
+    closePanel(true);
+    // The background sync job may have updated local records while this page was paused.
+    load();
+    go('matrix');
+    if (q >= 0 && q < 4) expandQuadrant(q);
+    if (add) editItem(null, q >= 0 && q < 4 ? q : 1);
+    else if (id) {
+      const item = db.items.find(t => t.id === id && !t.deleted && !t.purged);
+      if (item) openItem(id);
+      else toast('这条事项已删除，已显示最新四象限');
+    }
+  };
 })();
 </script></body></html>

@@ -52,6 +52,7 @@ public class Store {
   AtomicFile f=new AtomicFile(new File(c.getFilesDir(),"tasks.json"));FileOutputStream out=null;
   try{out=f.startWrite();out.write(s.getBytes(StandardCharsets.UTF_8));f.finishWrite(out);}catch(Exception e){f.failWrite(out);throw e;}
   File[] files=dir.listFiles();if(files!=null){Arrays.sort(files,Comparator.comparing(File::getName));for(int i=0;i<files.length-20;i++)files[i].delete();}
+  QuadrantWidget.refresh(c);
   Reminders.sync(c);
  }
  public static String stream(InputStream in) throws Exception {
