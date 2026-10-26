@@ -17,6 +17,6 @@ jar cf build/classes.jar -C build/classes .
 cp build/base.apk build/unsigned.apk
 (cd build/dex && zip -q -u ../unsigned.apk classes.dex)
 "$BT/zipalign" -f 4 build/unsigned.apk build/aligned.apk
-"$BT/apksigner" sign --ks "$KEYSTORE_PATH" --ks-pass env:QINGXIAO_KEYSTORE_PASSWORD --out build/qingxiao-todo-2.6.0.apk build/aligned.apk
-"$BT/apksigner" verify --verbose build/qingxiao-todo-2.6.0.apk
-shasum -a 256 build/qingxiao-todo-2.6.0.apk
+"$BT/apksigner" sign --ks "$KEYSTORE_PATH" --ks-pass env:QINGXIAO_KEYSTORE_PASSWORD --out build/qingxiao-todo-2.6.1.apk build/aligned.apk
+"$BT/apksigner" verify --verbose build/qingxiao-todo-2.6.1.apk
+shasum -a 256 build/qingxiao-todo-2.6.1.apk
