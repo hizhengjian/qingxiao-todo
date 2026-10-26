@@ -102,3 +102,6 @@
 .matrix.matrix-focused .task-swipe .task-text{font-size:15px}
 .matrix .tree-add-link,.matrix .tree-branch-link{margin-top:0;margin-bottom:2px;padding-top:4px;padding-bottom:4px;min-height:32px}
 @media(min-width:850px){.matrix .task-swipe .task-text{font-size:15px}.matrix .task-secondary{font-size:11px}}
+
+/* Completed branches remain browsable, with children beside their task title. */
+.tree-breadcrumb-label{flex:1;min-width:0}.tree-breadcrumb-label>span{display:block}.tree-breadcrumb-label>small{display:block;font-size:10px;color:#64776a;margin-top:3px}.tree-detail-children h3{display:flex;align-items:center;justify-content:space-between;gap:8px}.tree-detail-children h3 button{font-size:12px;color:#4f7563;padding:5px;min-height:36px}.tree-child-detail.done strong{color:#818a80;text-decoration:line-through}
