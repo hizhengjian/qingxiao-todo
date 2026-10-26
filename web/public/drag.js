@@ -8,19 +8,33 @@
  function siblings(parentId,q,id){const x=C.tree(db);return (parentId?(x.children.get(parentId)||[]):x.roots).filter(t=>t.id!==id&&!x.deleted.get(t.id)&&t.kind!=='note'&&(parentId||(!t.done&&C.effective(db,t).quadrant===q)));}
  function getBefore(drop,id){if(drop.position==='inside'||drop.position==='end')return null;if(drop.position==='before')return drop.targetId;const list=siblings(drop.parentId,drop.q,id),at=list.findIndex(t=>t.id===drop.targetId);if(at<0)throw Error('目标已变化，请重新拖动');return list[at+1]?.id||null;}
  function clearHover(g){g.hoverId='';g.hoverAt=0;g.nestReady=false;}
- function start(g,t){g.sourceStamp=stamp(t);g.branchIds=new Set(C.descendants(db,t.id).map(t=>t.id));g.marker=document.createElement('div');g.marker.className='task-drop-line';g.marker.hidden=true;g.marker.setAttribute('aria-hidden','true');document.body.append(g.marker);g.ghost.querySelector('small').textContent=g.branchIds.size>1?'移动整个分支 · '+g.branchIds.size+' 项':'上下拖动排序';}
+ // Change the live region only when the destination changes, not on every frame.
+ function hint(g,mode,icon,title,state,kind='',target=''){
+  const key=JSON.stringify([mode,icon,title,state,kind,target]);if(g.hintKey===key)return;g.hintKey=key;
+  const short=Array.from(target.replace(/\s+/g,' ').trim()),label=short.slice(0,32).join('')+(short.length>32?'…':'');
+  g.hint.dataset.mode=mode;
+  g.hint.innerHTML='<span class="drag-hint-icon" aria-hidden="true">'+icon+'</span><div class="drag-hint-body"><div class="drag-hint-top"><strong>'+esc(title)+'</strong><span>'+esc(state)+'</span></div><div class="drag-hint-context">'+(kind?'<span class="drag-hint-kind">'+esc(kind)+'</span>':'')+'<span class="drag-hint-target">'+esc(label)+'</span></div></div>';
+ }
+ function nestHint(g,row,target,isChild,ready,progress){
+  hint(g,ready?'nest':'wait','↳',ready?(isChild?'设为下级任务':'设为子任务'):'停留以放入',ready?'松手放入':'稍等',isChild?'子任务':'主任务',target.title);
+  g.hint.style.setProperty('--nest-progress',Math.min(1,progress));
+  const r=row.getBoundingClientRect(),clip=row.closest('.quad-list').getBoundingClientRect();
+  g.nestBadge.textContent=ready?(isChild?'↳ 下级':'↳ 子任务'):'稍停…';g.nestBadge.dataset.ready=String(ready);
+  Object.assign(g.nestBadge.style,{right:Math.max(8,innerWidth-r.right+6)+'px',top:Math.max(clip.top+2,Math.min(clip.bottom-22,r.bottom-22))+'px'});g.nestBadge.hidden=false;
+ }
+ function start(g,t){g.sourceStamp=stamp(t);g.branchIds=new Set(C.descendants(db,t.id).map(t=>t.id));g.marker=document.createElement('div');g.marker.className='task-drop-line';g.marker.hidden=true;g.marker.setAttribute('aria-hidden','true');g.nestBadge=document.createElement('div');g.nestBadge.className='task-drop-badge';g.nestBadge.hidden=true;g.nestBadge.setAttribute('aria-hidden','true');document.body.append(g.marker,g.nestBadge);const badge=g.ghost.querySelector('small');badge.textContent='＋'+(g.branchIds.size-1)+' 子项';badge.hidden=g.branchIds.size<=1;}
  function line(g,left,top,width){Object.assign(g.marker.style,{left:left+'px',top:top+'px',width:Math.max(16,width)+'px'});g.marker.hidden=false;}
  function preview(g){
-  g.drop=null;g.marker.hidden=true;
+  g.drop=null;g.marker.hidden=true;g.nestBadge.hidden=true;
   document.querySelectorAll('.drop-target,.drop-inside,.drop-nest-wait').forEach(el=>el.classList.remove('drop-target','drop-inside','drop-nest-wait'));
   const el=document.elementFromPoint(g.x,g.y),quad=el?.closest('#main .quadrant'),x=C.tree(db),source=x.nodes.get(g.id);
-  if(!source||stamp(source)!==g.sourceStamp){clearHover(g);g.hint.textContent='事项已在其他位置修改，松手取消后重试';return;}
-  if(!g.moved){g.hint.textContent='上下拖动调整次序 · 右侧停留可放入子任务';return;}
-  if(!quad){clearHover(g);g.hint.textContent='移回列表继续；在区域外松手取消';return;}
+  if(!source||stamp(source)!==g.sourceStamp){clearHover(g);hint(g,'blocked','!','事项已更新','松手取消','','请重新拖动');return;}
+  if(!g.moved){hint(g,'sort','↕','拖动以排序','移动事项','','停在事项右侧可设为子任务');return;}
+  if(!quad){clearHover(g);hint(g,'blocked','×','移出列表','松手取消','','移回列表可继续');return;}
   const q=Number(quad.dataset.quadrant),originalParent=x.parents.get(g.id)||'',sourceQ=C.effective(db,source).quadrant;
   let row=el.closest('.task-row'),drop,markerRow=row;
   if(row&&g.branchIds.has(row.dataset.taskId)){
-   clearHover(g);g.hint.textContent=row.dataset.taskId===g.id?'当前位置 · 继续上下拖动':'不能移入自己的子任务';return;
+   clearHover(g);if(row.dataset.taskId===g.id)hint(g,'sort','↕','当前位置','继续拖动','','上下移动可调整顺序');else hint(g,'blocked','!','不能移入自己的子任务','松手取消','','请移到其他事项');return;
   }
   if(row){
    const target=x.nodes.get(row.dataset.taskId),rect=row.getBoundingClientRect();
@@ -30,9 +44,10 @@
     if(g.hoverId!==target.id||Math.hypot(g.x-g.hoverX,g.y-g.hoverY)>10){g.hoverId=target.id;g.hoverAt=performance.now();g.hoverX=g.x;g.hoverY=g.y;g.nestReady=false;}
     const ready=performance.now()-g.hoverAt>=NEST_MS;
     row.classList.add(ready?'drop-inside':'drop-nest-wait');
+    nestHint(g,row,target,!!x.parents.get(target.id),ready,(performance.now()-g.hoverAt)/NEST_MS);
     if(ready&&!g.nestReady){try{if(native&&Native.haptic)Native.haptic('tick');else navigator.vibrate?.(12);}catch{}g.nestReady=true;}
     if(ready)drop={q,parentId:target.id,targetId:target.id,position:'inside'};
-    else {g.hint.textContent='稍停：放入“'+target.title+'”的子任务；上下移动可排序';return;}
+    else return;
    }else clearHover(g);
    if(!drop)drop={q,parentId:x.parents.get(target.id)||'',targetId:target.id,position:g.y<rect.top+rect.height/2?'before':'after'};
   }else{
@@ -42,19 +57,23 @@
    let parentId='';
    if(add)parentId=add.dataset.treeParent;
    else if(inList&&q===sourceQ){const branch=typeof treeBranch==='string'&&x.nodes.get(treeBranch);parentId=branch&&C.effective(db,branch).quadrant===q?branch.id:originalParent;}
-   if(parentId&&g.branchIds.has(parentId)){g.hint.textContent='不能移入自己的子任务';return;}
-   if(parentId&&!live(x,parentId)){g.hint.textContent='目标分支已不可用';return;}
+   if(parentId&&g.branchIds.has(parentId)){hint(g,'blocked','!','不能移入自己的子任务','松手取消','','请移到其他事项');return;}
+   if(parentId&&!live(x,parentId)){hint(g,'blocked','!','目标已不可用','松手取消','','请移到其他事项');return;}
    const rows=visibleRows(quad).filter(r=>!g.branchIds.has(r.dataset.taskId)&&(x.parents.get(r.dataset.taskId)||'')===parentId);
    const first=rows[0],last=rows.at(-1),atTop=!inList||first&&g.y<first.getBoundingClientRect().top;
    const target=atTop?first:last;
    drop={q,parentId,targetId:target?.dataset.taskId||'',position:target?(atTop?'before':'after'):'end'};markerRow=target;
    if(!target&&inList)line(g,rect.left+12,Math.max(rect.top+5,Math.min(rect.bottom-5,g.y)),rect.width-24);
   }
-  if(drop.parentId&&(!live(x,drop.parentId)||g.branchIds.has(drop.parentId))){g.hint.textContent='不能放入已完成或自己的任务分支';return;}
+  if(drop.parentId&&(!live(x,drop.parentId)||g.branchIds.has(drop.parentId))){hint(g,'blocked','!','不能移入此分支','松手取消','','请移到其他事项');return;}
   const sameParent=drop.parentId===originalParent;
   const parentTitle=drop.parentId?x.nodes.get(drop.parentId).title:'';
-  const moveText=drop.position==='inside'?'松手放入“'+parentTitle+'”的子任务':sameParent&&q===sourceQ?'松手调整'+(parentTitle?'“'+parentTitle+'”内的':'')+'次序':parentTitle?'松手移到“'+parentTitle+'”下':originalParent?'松手提升为主任务 · '+Q[q].replace('-',' · '):'松手移到：'+Q[q].replace('-',' · ');
-  g.hint.textContent=moveText+(g.branchIds.size>1?'（带上子任务）':'');quad.classList.add('drop-target');
+  if(drop.position!=='inside'){
+   if(sameParent&&q===sourceQ)hint(g,'sort','↕','调整同级顺序','松手放置','','按插入线排序');
+   else if(drop.parentId)hint(g,'nest','↳','调整任务归属','松手放置',x.parents.get(drop.parentId)?'子任务':'主任务',parentTitle);
+   else hint(g,'move',originalParent?'↑':'↗',originalParent?'提升为主任务':'移动象限','松手放置','',Q[q].replace('-',' · '));
+  }
+  quad.classList.add('drop-target');
   if(markerRow&&drop.position!=='inside'){
    const rect=markerRow.getBoundingClientRect(),clip=quad.querySelector('.quad-list').getBoundingClientRect();let y=rect.top;
    if(drop.position==='after'){
@@ -64,7 +83,7 @@
   }
   g.drop=drop;
  }
- function cleanup(g){g.marker?.remove();document.querySelectorAll('.drop-inside,.drop-nest-wait').forEach(el=>el.classList.remove('drop-inside','drop-nest-wait'));}
+ function cleanup(g){g.marker?.remove();g.nestBadge?.remove();document.querySelectorAll('.drop-inside,.drop-nest-wait').forEach(el=>el.classList.remove('drop-inside','drop-nest-wait'));}
  function commit(g){
   const drop=g.drop,source=treeTask(g.id);if(!drop||!source||stamp(source)!==g.sourceStamp)return;
   const focus=matrixFocus,branch=treeBranch,originalParent=C.tree(db).parents.get(g.id)||'',oldQ=C.effective(db,source).quadrant;
