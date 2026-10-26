@@ -35,7 +35,7 @@ public class QuadrantWidget extends AppWidgetProvider {
    JSONObject t=items.getJSONObject(n);
    if(tree.root(t.optString("id"))&&!t.optBoolean("done")&&!t.optBoolean("deleted")&&!t.optBoolean("purged")&&!"note".equals(t.optString("kind"))){JSONObject copy=new JSONObject(t.toString());copy.put("_treeProgress",tree.progress(t.getString("id")));result.add(copy);}
   }
-  result.sort(Comparator.comparingLong(t->t.optLong("order")));
+  result.sort(Comparator.comparingDouble((JSONObject t)->t.optDouble("order",0)).thenComparing(t->t.optString("id")));
   return result;
  }
 

@@ -1,4 +1,4 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="cn.nemo.qingxiao" android:versionCode="11" android:versionName="2.5.1">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="cn.nemo.qingxiao" android:versionCode="12" android:versionName="2.6.0">
   <uses-permission android:name="android.permission.INTERNET" />
   <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
   <uses-sdk android:minSdkVersion="26" android:targetSdkVersion="34" />

@@ -66,6 +66,14 @@
 @media(max-width:600px){.matrix:not(.matrix-focused) .tree-toggle{width:23px;min-width:23px;flex-basis:23px}.matrix:not(.matrix-focused) .tree-node{margin-left:calc(var(--tree-depth,0)*8px)}.matrix:not(.matrix-focused) .tree-progress{font-size:10px}.matrix:not(.matrix-focused) .tree-node .task-pom{display:none}.matrix:not(.matrix-focused) .tree-add-form{flex-wrap:wrap}.matrix:not(.matrix-focused) .tree-add-form input{flex-basis:100%}}
 
 .tree-toggle{color:#52665e}.tree-node{border-left-color:#00000016}.tree-progress{color:#626e64}.tree-path{color:#6c756f}.tree-add-link,.tree-branch-link{color:#566e63}.tree-breadcrumb{background:rgba(255,255,255,.8);border-bottom-color:#00000012}.tree-breadcrumb button{color:#3d6b58}.tree-breadcrumb span{color:#747b72}.tree-actions,.tree-child-detail{border-color:#00000012}.tree-detail-path button{color:#4f7563}
+/* Drop indicators are overlays: previewing never changes row heights under the finger. */
+.task-drop-line{position:fixed;height:3px;border-radius:3px;background:#21886b;box-shadow:0 0 0 1px #fff9;z-index:99;pointer-events:none}
+.task-drop-line::before{content:'';position:absolute;left:-3px;top:-3px;width:9px;height:9px;border-radius:50%;background:#21886b}
+.task-row.drop-nest-wait{outline:2px dashed #4c9776;outline-offset:-3px;background:#ffffff35}
+.task-row.drop-inside{outline:3px solid #21886b;outline-offset:-3px;background:#ffffff85}
+.task-drag-active .task-row.dragging{opacity:.4}.task-drag-hint{white-space:normal;overflow-wrap:anywhere}
+.task-drag-active .swipe-action,.task-drag-active #toast{visibility:hidden}
+.task-row.drop-nest-wait{background:#edf5ed}.task-row.drop-inside{background:#dff3e8}
 </style></head><body>
 <div id="app"><header id="top"><button id="menu-button" aria-label="打开菜单" onclick="drawer(true)"><span class="avatar">轻</span></button><button id="page-title" onclick="chooseDate()"></button><button id="top-add" aria-label="新建" onclick="addForView()">＋</button></header><button id="sync-top" onclick="syncInfo()" aria-label="查看保存与同步状态">已存本机</button><main id="main"></main><button id="timer-bar" onclick="go('pomodoro')" hidden></button></div>
 <div id="drawer-mask" onclick="drawer(false)" hidden></div><aside id="drawer" aria-label="导航"><div class="profile"><div class="avatar large">轻</div><strong>我的私事</strong><small id="sync-label" onclick="syncNow()">本机保存</small></div><nav id="nav"></nav><footer><button onclick="go('search')" aria-label="搜索">⌕</button><button onclick="go('achievements')" aria-label="我的成就">▥</button><button onclick="settings()" aria-label="设置">⚙</button><button onclick="syncNow()" aria-label="立即同步">☁</button></footer></aside>
@@ -101,6 +109,27 @@ function progress(db,id){let x=tree(db),branch=descendants(db,id,false).filter(t
 function resolveNode(db,id,sid=''){return sid?(db.items.find(t=>t.legacyParentId===id&&t.legacySubtaskId===sid)?.id||childId(id,sid)):id;}
 function moveNode(db,id,parentId){let x=tree(db),t=x.nodes.get(id),p=x.nodes.get(parentId);if(!t||t.deleted)throw Error('事项已不可用');if(parentId&&(!p||x.deleted.get(parentId)||x.done.get(parentId)||p.kind==='note'))throw Error('请选择未完成事项');if(parentId&&descendants(db,id).some(n=>n.id===parentId))throw Error('不能移动到自己或自己的子任务中');let e=effective(db,t);Object.assign(t,{parentId:parentId||'',quadrant:e.quadrant,project:e.project,order:Date.now()});touch(t);return t;}
 
+// Reorder one record between its neighbors; keep unrelated siblings clean for sync.
+function placeNode(db,id,{parentId='',quadrant,beforeId=null}){
+ const x=tree(db),t=x.nodes.get(id),parent=x.nodes.get(parentId);
+ if(!t||x.deleted.get(id)||x.done.get(id)||t.kind==='note')throw Error('事项已变化，请重新拖动');
+ if(parentId&&(!parent||x.deleted.get(parentId)||x.done.get(parentId)||parent.kind==='note'))throw Error('目标任务已不可用');
+ if(parentId&&descendants(db,id).some(n=>n.id===parentId))throw Error('不能移入自己或自己的后代');
+ const old=effective(db,t),q=parent?effective(db,parent).quadrant:quadrant;
+ if(!Number.isInteger(q)||q<0||q>3)throw Error('请选择四象限区域');
+ const all=(parentId?(x.children.get(parentId)||[]):x.roots).filter(n=>!x.deleted.get(n.id)&&n.kind!=='note'&&(parentId||(!n.done&&effective(db,n).quadrant===q)));
+ const list=all.filter(n=>n.id!==id),index=beforeId==null?list.length:list.findIndex(n=>n.id===beforeId);
+ if(index<0)throw Error('插入位置已变化，请重新拖动');
+ const same=(x.parents.get(id)||'')===parentId&&old.quadrant===q;
+ if(same&&all.indexOf(t)===index)return false;
+ const rank=n=>Number.isFinite(n?.order)?n.order:0;
+ let left=list[index-1],right=list[index],order=left&&right?rank(left)+(rank(right)-rank(left))/2:left?rank(left)+1024:right?rank(right)-1024:0;
+ if(!Number.isFinite(order)||(left&&order<=rank(left))||(right&&order>=rank(right))){
+  list.splice(index,0,t);list.forEach((n,i)=>{if(n!==t&&n.order!==i*1024){n.order=i*1024;touch(n);}});order=index*1024;
+ }
+ Object.assign(t,{parentId,quadrant:q,project:parent?effective(db,parent).project:old.project,order});touch(t);return true;
+}
+
 function validate(x){let all=new Set();for(let arr of ['items','sessions','catalogs','preferences']){if(!Array.isArray(x[arr])||x[arr].length>20000)throw Error('记录数量或格式不正确');for(let r of x[arr]){if(!r||typeof r.id!=='string'||!r.id||all.has(r.id))throw Error('记录编号重复或无效');all.add(r.id);}}
  for(let t of x.items){if(t.parentId!=null&&typeof t.parentId!=='string')throw Error('父任务编号无效');if(typeof t.title!=='string'||typeof t.notes!=='string'||!Number.isInteger(t.quadrant)||t.quadrant<0||t.quadrant>3||!Array.isArray(t.tags)||t.tags.some(s=>typeof s!=='string')||!Array.isArray(t.subtasks)||t.subtasks.some(s=>typeof s.text!=='string'||typeof s.id!=='string'))throw Error('待办字段无效');}
  for(let t of x.items){for(let r of [t,...t.subtasks]){for(let f of ['startAt','dueAt','remindAt'])if(r[f]!=null&&(!Number.isFinite(r[f])||r[f]<0))throw Error('日程时间无效');if(r.startAt&&r.dueAt&&r.dueAt<r.startAt)throw Error('日程结束不能早于开始');}if(!Array.isArray(t.photos||[])||(t.photos||[]).length>12||(t.photos||[]).some(p=>!p||!/^photo-[a-zA-Z0-9-]{10,80}$/.test(p.id)))throw Error('照片信息无效');}
@@ -130,7 +159,7 @@ function pauseTimer(t,now=Date.now()){if(t.state!=='running')return t;let end=Ma
 function resumeTimer(t,now=Date.now()){if(t.state!=='paused')return t;t.state='running';t.segmentStartedAt=now;t.endAt=now+t.remainingMs;return t;}
 function finishTimer(t,now=Date.now()){const finished=(t.state==='running'&&now>=t.endAt)||(t.state==='paused'&&t.remainingMs<=0);if(t.state==='running')pauseTimer(t,now);let seg=t.segments.filter(s=>s.endAt>s.startAt),durationMs=unionDuration(seg);return touch({id:'session:'+t.id,title:t.title,taskId:t.taskId,subtaskId:t.subtaskId,project:t.project,category:t.category,deviceId:t.deviceId,mode:t.mode,status:finished?'completed':'partial',startAt:t.startedAt,endAt:seg.at(-1)?.endAt||now,plannedMs:t.plannedMs,durationMs,segments:seg,deleted:false});}
 function agenda(db,start,end){let out=[],x=tree(db);for(let t of db.items.filter(t=>!x.deleted.get(t.id)&&t.kind!=='note')){let a=t.startAt||t.dueAt,b=t.dueAt||a+1800000;if(!a||a>=end||Math.max(b,a+1)<=start)continue;out.push({taskId:t.id,subtaskId:'',title:t.title,parentTitle:ancestors(db,t.id).map(t=>t.title).join(' / '),startAt:a,endAt:Math.max(b,a+1),done:!!x.done.get(t.id),quadrant:effective(db,t).quadrant,remindAt:t.remindAt||0});}return out.sort((a,b)=>a.startAt-b.startAt);}
-root.QCore={childId,migrateItems,invalidate,tree,descendants,ancestors,effective,progress,resolveNode,moveNode,agenda,clone,uid,blank,normalize,validate,touch,changes,merge,dayStart,nextDay,dateKey,slices,unionDuration,stats,taskStats,nextOccurrence,complete,startTimer,pauseTimer,resumeTimer,finishTimer};
+root.QCore={placeNode,childId,migrateItems,invalidate,tree,descendants,ancestors,effective,progress,resolveNode,moveNode,agenda,clone,uid,blank,normalize,validate,touch,changes,merge,dayStart,nextDay,dateKey,slices,unionDuration,stats,taskStats,nextOccurrence,complete,startTimer,pauseTimer,resumeTimer,finishTimer};
 if(typeof module!=='undefined')module.exports=root.QCore;
 })(globalThis);
 </script><script>'use strict';
@@ -454,27 +483,26 @@ render();
     const rect = g.ghost.getBoundingClientRect();
     g.ghost.style.left = Math.max(6, Math.min(innerWidth - rect.width - 6, g.x - rect.width / 2)) + 'px';
     g.ghost.style.top = Math.max(6, Math.min(innerHeight - rect.height - 6, g.y - rect.height - 20)) + 'px';
-    document.querySelectorAll('.drop-target').forEach(q => q.classList.remove('drop-target'));
-    const target = pointInQuadrant(g.x, g.y);
-    target?.classList.add('drop-target');
-    const q = target ? Number(target.dataset.quadrant) : -1;
-    if (q !== g.target) { if (q >= 0) haptic(); g.target = q; }
-    g.hint.textContent = q < 0 ? '移到颜色区域，或松手取消' : q === task(g.id)?.quadrant ? '拖到其他颜色区域' : '松手移到：' + Q[q].replace('-', ' · ');
+    if(window.QDrag)QDrag.preview(g);
   }
-  function scrollDuringDrag() {
+  function scrollDuringDrag(time) {
     if (!gesture || gesture.mode !== 'drag') return;
     const g = gesture, list = pointInQuadrant(g.x, g.y)?.querySelector('.quad-list');
+    const elapsed=Math.min(32,Math.max(0,time-(g.frameAt||time)));g.frameAt=time;
     if (list) {
-      const r = list.getBoundingClientRect();
+      const r = list.getBoundingClientRect(),edge=Math.min(56,r.height/4);
       if (g.y >= r.top && g.y <= r.bottom) {
-        if (g.y < r.top + 32) list.scrollTop -= 7;
-        else if (g.y > r.bottom - 32) list.scrollTop += 7;
+        let speed=g.y<r.top+edge?-(r.top+edge-g.y)/edge:g.y>r.bottom-edge?(g.y-(r.bottom-edge))/edge:0;
+        if(speed)list.scrollTop+=speed*elapsed*.65;
       }
     }
+    movePreview(g);
     frame = requestAnimationFrame(scrollDuringDrag);
   }
+
   function startDrag() {
     const g = gesture, t = g && task(g.id);
+    if(!window.QDrag)return;
     if (!g || g.mode !== 'pending' || view !== 'matrix' || !t || t.deleted || t.done || t.kind === 'note' || !$('overlay').hidden) return;
     closeSwipe(); g.mode = 'drag'; g.target = -1;
     if (g.input === 'pointer') { try { g.row.setPointerCapture(g.identifier); } catch {} }
@@ -485,7 +513,7 @@ render();
     g.ghost.setAttribute('aria-hidden', 'true');
     g.hint = document.createElement('div'); g.hint.className = 'task-drag-hint'; g.hint.setAttribute('role', 'status');
     document.body.append(g.ghost, g.hint); document.body.classList.add('task-drag-active');
-    haptic('hold'); movePreview(g); frame = requestAnimationFrame(scrollDuringDrag);
+    window.QDrag?.start(g,t);haptic('hold'); movePreview(g); frame = requestAnimationFrame(scrollDuringDrag);
   }
   function begin(e, x, y, input, identifier) {
     const row = e.target.closest('.task-row');
@@ -508,7 +536,7 @@ render();
       else return;
     }
     if (e.cancelable) e.preventDefault();
-    if (g.mode === 'drag') { movePreview(g); return; }
+    if (g.mode === 'drag') {g.moved ||= Math.hypot(dx,dy)>8;movePreview(g); return; }
     const width = g.wrap.clientWidth;
     let offset = Math.max(-width * .9, Math.min(width * .9, g.offset + dx));
     if (task(g.id)?.deleted) offset = Math.max(0, offset);
@@ -526,7 +554,7 @@ render();
   function clean(g) {
     clearTimeout(holdTimer); cancelAnimationFrame(frame);
     g.row.classList.remove('dragging'); g.wrap.classList.remove('swiping', 'swipe-ready');
-    g.ghost?.remove(); g.hint?.remove(); document.body.classList.remove('task-drag-active');
+    window.QDrag?.cleanup(g);g.ghost?.remove(); g.hint?.remove(); document.body.classList.remove('task-drag-active');
     document.querySelectorAll('.drop-target').forEach(q => q.classList.remove('drop-target'));
     gesture = null;
   }
@@ -538,7 +566,7 @@ render();
   }
   function finish(e, x, y) {
     const g = gesture; if (!g) return;
-    const mode = g.mode; clean(g);
+    const mode = g.mode;if(mode==='drag'){g.x=x;g.y=y;movePreview(g);}clean(g);
     if (mode === 'pending') {
       if (g.beganOpen) { closeSwipe(); suppressClickUntil = Date.now() + 450; }
       flush(); return;
@@ -546,8 +574,7 @@ render();
     if (e.cancelable) e.preventDefault();
     suppressClickUntil = Date.now() + 450;
     if (mode === 'drag') {
-      const q = pointInQuadrant(x, y);
-      if (q) moveQuadrant(g.id, Number(q.dataset.quadrant));
+      window.QDrag?.commit(g);
       flush(); return;
     }
     const offset = g.current || 0;
@@ -629,9 +656,9 @@ render();
       }
     }
   };
-  window.QGestures = {act: action, cancel, close: closeSwipe};
+  window.QGestures = {act: action, cancel, close: closeSwipe, peekUndo:()=>undoStack.at(-1), active:()=>!!(gesture||opened)};
   window.gestureHelp = function () {
-    show('事项快捷操作', '<div class="gesture-guide"><p><strong>点一下放大象限</strong><br>总览中点事项文字或空白区域放大，再点事项查看详情。点其他颜色条切换，点收起按钮返回总览。</p><p><strong>长按后拖动</strong><br>按住事项约半秒，再拖到另一种颜色；看到边框高亮后松手。象限放大时也能拖到旁边的颜色条。</p><p><strong>右滑完成 · 左滑删除</strong><br>轻滑显示按钮，点击执行；滑得更远，看到“松手完成 / 删除”后松手即可执行。</p><p><strong>操作可以撤销</strong><br>完成、删除、移动后，10秒内点底部“撤销”；连续操作可逐步撤销。删除的事项也可以在设置里的回收站恢复。</p><p><strong>上下滑动照常滚动</strong><br>完成按钮、番茄按钮和更多菜单都可以直接点击。电脑也可以长按拖动，或用 Ctrl / ⌘ + Z 撤销。</p></div>');
+    show('事项快捷操作', '<div class="gesture-guide"><p><strong>点一下放大象限</strong><br>总览中点事项文字或空白区域放大，再点事项查看详情。点其他颜色条切换，点收起按钮返回总览。</p><p><strong>长按后拖动</strong><br>按住事项约半秒，上下拖动到插入线处松手，就能调整次序。主任务带上整棵分支；子任务也能同级排序。拖到另一颜色区域可移动优先级，子任务会提升为主任务。</p><p><strong>拖成子任务</strong><br>拖到目标事项右侧并稍停，出现“松手放入子任务”提示后再松手。拖到象限标题可提升为主任务；拖到列表上下边缘会自动滚动。移出区域松手或按返回可取消，操作后10秒内可撤销。</p><p><strong>右滑完成 · 左滑删除</strong><br>轻滑显示按钮，点击执行；滑得更远，看到“松手完成 / 删除”后松手即可执行。</p><p><strong>操作可以撤销</strong><br>完成、删除、移动后，10秒内点底部“撤销”；连续操作可逐步撤销。删除的事项也可以在设置里的回收站恢复。</p><p><strong>上下滑动照常滚动</strong><br>完成按钮、番茄按钮和更多菜单都可以直接点击。电脑也可以长按拖动，或用 Ctrl / ⌘ + Z 撤销。</p></div>');
   };
   const previousMatrix = matrixHtml;
   matrixHtml = function () {
@@ -664,13 +691,13 @@ itemRow=function(t){const e=C.effective(db,t),x=C.tree(db),children=(x.children.
 function treeRows(t,depth=0){let x=C.tree(db),html=`<div class="tree-node" style="--tree-depth:${depth}">${itemRow(t)}</div>`;if(!treeExpanded.has(t.id)||t.deleted)return html;
  let children=(x.children.get(t.id)||[]).filter(c=>!x.deleted.get(c.id));if(depth>=2&&children.length)return html+`<button class="tree-branch-link" onclick="treeEnter(${arg(t.id)})">↳ 查看此分支 · ${children.length} 个子任务 ›</button>`;
  html+=children.map(c=>treeRows(c,depth+1)).join('');
- if(!t.done&&t.kind!=='note')html+=treeAdding===t.id?`<form class="tree-add-form" style="--tree-depth:${depth+1}" onsubmit="event.preventDefault();treeQuickAdd(${arg(t.id)})"><input id="tree-quick-input" aria-label="子任务名称" placeholder="下一步做什么？回车保存" value="${esc(treeDrafts[t.id]||'')}" oninput="treeDrafts[${arg(t.id)}]=this.value" autocomplete="off" enterkeyhint="done"><button type="submit" aria-label="保存子任务">＋</button><button type="button" aria-label="结束添加" onclick="treeAdding='';render()">×</button></form>`:`<button class="tree-add-link" style="--tree-depth:${depth+1}" onclick="treeStartAdd(${arg(t.id)})">＋ 添加子任务</button>`;
+ if(!t.done&&t.kind!=='note')html+=treeAdding===t.id?`<form class="tree-add-form" data-tree-parent="${esc(t.id)}" style="--tree-depth:${depth+1}" onsubmit="event.preventDefault();treeQuickAdd(${arg(t.id)})"><input id="tree-quick-input" aria-label="子任务名称" placeholder="下一步做什么？回车保存" value="${esc(treeDrafts[t.id]||'')}" oninput="treeDrafts[${arg(t.id)}]=this.value" autocomplete="off" enterkeyhint="done"><button type="submit" aria-label="保存子任务">＋</button><button type="button" aria-label="结束添加" onclick="treeAdding='';render()">×</button></form>`:`<button class="tree-add-link" data-tree-parent="${esc(t.id)}" style="--tree-depth:${depth+1}" onclick="treeStartAdd(${arg(t.id)})">＋ 添加子任务</button>`;
  return html;}
 function treeStartAdd(id){treeExpanded.add(id);treeAdding=id;treeRemember();if(view!=='matrix')treeLocate(id);else render();$('tree-quick-input')?.focus({preventScroll:true});}
 function treeQuickAdd(id){let name=(treeDrafts[id]||'').trim(),p=treeTask(id);if(!name)return;if(!p||C.tree(db).deleted.get(id)||C.tree(db).done.get(id)){toast('父任务已完成或删除，请先恢复');return;}
  const e=C.effective(db,p),t=C.touch({id:C.uid(),parentId:id,treeVersion:3,title:name,notes:'',summary:'',quadrant:e.quadrant,project:e.project,kind:'task',tags:[],photos:[],subtasks:[],weight:1,estimate:0,done:false,deleted:false,createdAt:Date.now(),order:Date.now(),_rev:0});db.items.push(t);if(!save()){db.items.pop();C.invalidate();return;}treeDrafts[id]='';render();scheduleSync();$('tree-quick-input')?.focus({preventScroll:true});}
 // A transaction preserves only changed fields when undoing, so unrelated edits survive.
-function treeTransaction(message,edit){const before=C.clone(db.items),known=new Map(before.map(t=>[t.id,t]));try{edit();C.invalidate();if(!save())throw Error('未保存，操作已还原');}catch(e){db.items=before;C.invalidate();render();toast(e.message);return false;}
+function treeTransaction(message,edit){const before=C.clone(db.items),known=new Map(before.map(t=>[t.id,t]));try{if(edit()===false)return false;C.invalidate();if(!save())throw Error('未保存，操作已还原');}catch(e){db.items=before;C.invalidate();render();toast(e.message);return false;}
  const patch=[];for(let t of db.items){let old=known.get(t.id);if(!old){patch.push({id:t.id,created:true,expected:C.clone(t)});continue;}let fields=Object.keys(t).filter(k=>!k.startsWith('_')&&k!=='updatedAt'&&JSON.stringify(t[k])!==JSON.stringify(old[k]));if(fields.length)patch.push({id:t.id,fields,old,expected:C.clone(t)});}
  render();closePanel(true);scheduleSync();toastUndo(message,()=>{for(let p of patch){let t=treeTask(p.id);if(!t||(p.created?t.updatedAt!==p.expected.updatedAt:p.fields.some(k=>JSON.stringify(t[k])!==JSON.stringify(p.expected[k])))){toast('分支已再次修改，无法撤销这一步');return false;}}
  let snapshot=C.clone(db.items);for(let p of patch){let t=treeTask(p.id);if(p.created)t.deleted=true;else for(let k of p.fields){if(k in p.old)t[k]=C.clone(p.old[k]);else delete t[k];}C.touch(t);}if(!save()){db.items=snapshot;C.invalidate();return false;}render();scheduleSync();return true;});return true;}
@@ -683,7 +710,8 @@ moveQuadrant=function(id,q){let t=treeTask(id);if(!t)return;if(C.tree(db).parent
 function treeMoveMenu(id){let excluded=new Set(C.descendants(db,id).map(t=>t.id));show('移动任务分支',`<label>新的父任务</label><input id="tree-move-search" placeholder="搜索父任务" aria-label="搜索父任务" oninput="treeMoveOptions(${arg(id)},this.value)"><div id="tree-move-options"></div><p class="hint">整个分支一起移动，已有日程、提醒和番茄记录会保留。</p>`);treeMoveOptions(id,'');}
 function treeMoveOptions(id,query){let excluded=new Set(C.descendants(db,id).map(t=>t.id)),x=C.tree(db),a=db.items.filter(t=>!excluded.has(t.id)&&!x.deleted.get(t.id)&&!x.done.get(t.id)&&t.kind!=='note'&&(treePath(t.id)+'/'+t.title).toLowerCase().includes(query.toLowerCase()));$('tree-move-options').innerHTML=`<button class="tree-destination" onclick="treeMove(${arg(id)},'')">提升为主任务</button>`+a.slice(0,100).map(t=>`<button class="tree-destination" onclick="treeMove(${arg(id)},${arg(t.id)})"><strong>${esc(t.title)}</strong><small>${esc(treePath(t.id)||'主任务')}</small></button>`).join('')+(a.length>100?'<p class="hint">请搜索缩小范围</p>':'');}
 function treeMove(id,parentId){if(treeTransaction(parentId?'分支已移动':'已提升为主任务',()=>C.moveNode(db,id,parentId))){if(parentId)treeExpanded.add(parentId);treeRemember();treeLocate(id);}}
-function treeOrder(id,delta){let x=C.tree(db),t=treeTask(id),siblings=(x.parents.get(id)?x.children.get(x.parents.get(id)):x.roots).filter(n=>!x.deleted.get(n.id)),at=siblings.indexOf(t),other=siblings[at+delta];if(!other)return;treeTransaction('已调整同级顺序',()=>{[siblings[at],siblings[at+delta]]=[siblings[at+delta],siblings[at]];siblings.forEach((n,i)=>{n.order=i;C.touch(n);});});}
+function treeOrder(id,delta){let x=C.tree(db),t=treeTask(id);if(!t)return;let parentId=x.parents.get(id)||'',q=C.effective(db,t).quadrant,siblings=(parentId?x.children.get(parentId):x.roots).filter(n=>!x.deleted.get(n.id)&&n.kind!=='note'&&(parentId||(!n.done&&C.effective(db,n).quadrant===q))),at=siblings.indexOf(t),other=siblings[at+delta];if(!other)return;const beforeId=delta<0?other.id:siblings[at+2]?.id||null;treeTransaction('已调整同级顺序',()=>C.placeNode(db,id,{parentId,quadrant:q,beforeId}));}
+
 const treeBaseMenu=taskMenu;
 taskMenu=function(id){let t=treeTask(id);if(!t)return;treeBaseMenu(id);const body=$('panel').querySelector('.panel-body'),section=document.createElement('section');section.className='tree-actions';section.innerHTML=(!t.deleted&&!t.done&&t.kind!=='note'?`<button onclick="treeEditChild(${arg(id)})">＋ 添加子任务</button>`:'')+(!t.deleted?`<button onclick="treeMoveMenu(${arg(id)})">移动到… / 提升为主任务</button><div class="row"><button onclick="treeOrder(${arg(id)},-1)">↑ 同级上移</button><button onclick="treeOrder(${arg(id)},1)">↓ 同级下移</button></div><button onclick="treeLocate(${arg(id)})">在四象限中定位</button>`:'');body.prepend(section);};
 const treeBaseEdit=editItem;
@@ -700,9 +728,97 @@ pickFocus=function(){let a=activeItems();show('选择专注事项',`<div class="
 const treeBaseFinish=finishChoice;finishChoice=function(action,id='',sid=''){return treeBaseFinish(action,C.resolveNode(db,id,sid),'');};
 const treeBaseQuick=quickAddQuadrant;quickAddQuadrant=function(q){let t=treeTask(treeBranch);if(!t||C.effective(db,t).quadrant!==q)return treeBaseQuick(q);treeDrafts[t.id]=matrixDrafts[q];treeQuickAdd(t.id);if(!treeDrafts[t.id])matrixDrafts[q]='';render();$('quad-input-'+q)?.focus({preventScroll:true});};
 const treeBaseRender=render;render=function(){C.invalidate();const active=document.activeElement,keep=active?.id==='tree-quick-input'?{start:active.selectionStart,end:active.selectionEnd}:null;treeBaseRender();if(view==='matrix'&&treeBranch){const el=$('quad-input-'+matrixFocus);if(el)el.placeholder='添加到此分支，回车保存';}if(keep){let el=$('tree-quick-input');if(el){el.focus({preventScroll:true});el.setSelectionRange(keep.start,keep.end);}}};
-const treeBaseBack=handleBack;handleBack=function(){if($('overlay').hidden&&view==='matrix'&&treeBranch){treeLeave();return true;}return treeBaseBack();};
-const treeBaseSettings=settings;settings=function(){treeBaseSettings();const strong=$('panel').querySelector('strong');if(strong)strong.textContent='轻效 Todo · 2.5.0';};
+const treeBaseBack=handleBack;handleBack=function(){if(window.QGestures?.active?.())return treeBaseBack();if($('overlay').hidden&&view==='matrix'&&treeBranch){treeLeave();return true;}return treeBaseBack();};
+const treeBaseSettings=settings;settings=function(){treeBaseSettings();const strong=$('panel').querySelector('strong');if(strong)strong.textContent='轻效 Todo · 2.6.0';};
 render();
+</script><script>/* Tree-aware drop targets. Hover only previews; records change once on release. */
+(function(){
+ 'use strict';
+ const NEST_MS=650;
+ const stamp=t=>{const x=C.tree(db),e=C.effective(db,t);return JSON.stringify([t.id,t.parentId||'',t.order||0,e.quadrant,e.project,!!x.deleted.get(t.id),!!x.done.get(t.id),t.title]);};
+ const live=(x,id)=>x.nodes.has(id)&&!x.deleted.get(id)&&!x.done.get(id)&&x.nodes.get(id).kind!=='note';
+ function visibleRows(quad){return [...quad.querySelectorAll('.task-row')];}
+ function siblings(parentId,q,id){const x=C.tree(db);return (parentId?(x.children.get(parentId)||[]):x.roots).filter(t=>t.id!==id&&!x.deleted.get(t.id)&&t.kind!=='note'&&(parentId||(!t.done&&C.effective(db,t).quadrant===q)));}
+ function getBefore(drop,id){if(drop.position==='inside'||drop.position==='end')return null;if(drop.position==='before')return drop.targetId;const list=siblings(drop.parentId,drop.q,id),at=list.findIndex(t=>t.id===drop.targetId);if(at<0)throw Error('目标已变化，请重新拖动');return list[at+1]?.id||null;}
+ function clearHover(g){g.hoverId='';g.hoverAt=0;g.nestReady=false;}
+ function start(g,t){g.sourceStamp=stamp(t);g.branchIds=new Set(C.descendants(db,t.id).map(t=>t.id));g.marker=document.createElement('div');g.marker.className='task-drop-line';g.marker.hidden=true;g.marker.setAttribute('aria-hidden','true');document.body.append(g.marker);g.ghost.querySelector('small').textContent=g.branchIds.size>1?'移动整个分支 · '+g.branchIds.size+' 项':'上下拖动排序';}
+ function line(g,left,top,width){Object.assign(g.marker.style,{left:left+'px',top:top+'px',width:Math.max(16,width)+'px'});g.marker.hidden=false;}
+ function preview(g){
+  g.drop=null;g.marker.hidden=true;
+  document.querySelectorAll('.drop-target,.drop-inside,.drop-nest-wait').forEach(el=>el.classList.remove('drop-target','drop-inside','drop-nest-wait'));
+  const el=document.elementFromPoint(g.x,g.y),quad=el?.closest('#main .quadrant'),x=C.tree(db),source=x.nodes.get(g.id);
+  if(!source||stamp(source)!==g.sourceStamp){clearHover(g);g.hint.textContent='事项已在其他位置修改，松手取消后重试';return;}
+  if(!g.moved){g.hint.textContent='上下拖动调整次序 · 右侧停留可放入子任务';return;}
+  if(!quad){clearHover(g);g.hint.textContent='移回列表继续；在区域外松手取消';return;}
+  const q=Number(quad.dataset.quadrant),originalParent=x.parents.get(g.id)||'',sourceQ=C.effective(db,source).quadrant;
+  let row=el.closest('.task-row'),drop,markerRow=row;
+  if(row&&g.branchIds.has(row.dataset.taskId)){
+   clearHover(g);g.hint.textContent=row.dataset.taskId===g.id?'当前位置 · 继续上下拖动':'不能移入自己的子任务';return;
+  }
+  if(row){
+   const target=x.nodes.get(row.dataset.taskId),rect=row.getBoundingClientRect();
+   if(!target||x.deleted.get(target.id)){clearHover(g);return;}
+   const nestZone=live(x,target.id)&&g.x>rect.left+rect.width*.72&&g.y>rect.top+rect.height*.22&&g.y<rect.bottom-rect.height*.22;
+   if(nestZone){
+    if(g.hoverId!==target.id||Math.hypot(g.x-g.hoverX,g.y-g.hoverY)>10){g.hoverId=target.id;g.hoverAt=performance.now();g.hoverX=g.x;g.hoverY=g.y;g.nestReady=false;}
+    const ready=performance.now()-g.hoverAt>=NEST_MS;
+    row.classList.add(ready?'drop-inside':'drop-nest-wait');
+    if(ready&&!g.nestReady){try{if(native&&Native.haptic)Native.haptic('tick');else navigator.vibrate?.(12);}catch{}g.nestReady=true;}
+    if(ready)drop={q,parentId:target.id,targetId:target.id,position:'inside'};
+    else {g.hint.textContent='稍停：放入“'+target.title+'”的子任务；上下移动可排序';return;}
+   }else clearHover(g);
+   if(!drop)drop={q,parentId:x.parents.get(target.id)||'',targetId:target.id,position:g.y<rect.top+rect.height/2?'before':'after'};
+  }else{
+   clearHover(g);
+   // Within a branch's add row, preserve that parent; rails/header always mean root level.
+   const add=el.closest('[data-tree-parent]'),list=quad.querySelector('.quad-list'),rect=list?.getBoundingClientRect(),inList=rect&&g.y>=rect.top&&g.y<=rect.bottom;
+   let parentId='';
+   if(add)parentId=add.dataset.treeParent;
+   else if(inList&&q===sourceQ){const branch=typeof treeBranch==='string'&&x.nodes.get(treeBranch);parentId=branch&&C.effective(db,branch).quadrant===q?branch.id:originalParent;}
+   if(parentId&&g.branchIds.has(parentId)){g.hint.textContent='不能移入自己的子任务';return;}
+   if(parentId&&!live(x,parentId)){g.hint.textContent='目标分支已不可用';return;}
+   const rows=visibleRows(quad).filter(r=>!g.branchIds.has(r.dataset.taskId)&&(x.parents.get(r.dataset.taskId)||'')===parentId);
+   const first=rows[0],last=rows.at(-1),atTop=!inList||first&&g.y<first.getBoundingClientRect().top;
+   const target=atTop?first:last;
+   drop={q,parentId,targetId:target?.dataset.taskId||'',position:target?(atTop?'before':'after'):'end'};markerRow=target;
+   if(!target&&inList)line(g,rect.left+12,Math.max(rect.top+5,Math.min(rect.bottom-5,g.y)),rect.width-24);
+  }
+  if(drop.parentId&&(!live(x,drop.parentId)||g.branchIds.has(drop.parentId))){g.hint.textContent='不能放入已完成或自己的任务分支';return;}
+  const sameParent=drop.parentId===originalParent;
+  const parentTitle=drop.parentId?x.nodes.get(drop.parentId).title:'';
+  const moveText=drop.position==='inside'?'松手放入“'+parentTitle+'”的子任务':sameParent&&q===sourceQ?'松手调整'+(parentTitle?'“'+parentTitle+'”内的':'')+'次序':parentTitle?'松手移到“'+parentTitle+'”下':originalParent?'松手提升为主任务 · '+Q[q].replace('-',' · '):'松手移到：'+Q[q].replace('-',' · ');
+  g.hint.textContent=moveText+(g.branchIds.size>1?'（带上子任务）':'');quad.classList.add('drop-target');
+  if(markerRow&&drop.position!=='inside'){
+   const rect=markerRow.getBoundingClientRect(),clip=quad.querySelector('.quad-list').getBoundingClientRect();let y=rect.top;
+   if(drop.position==='after'){
+    const ids=new Set(C.descendants(db,drop.targetId).map(t=>t.id));y=Math.max(rect.bottom,...visibleRows(quad).filter(r=>ids.has(r.dataset.taskId)).map(r=>r.getBoundingClientRect().bottom));
+   }
+   line(g,rect.left+4,Math.max(clip.top+2,Math.min(clip.bottom-3,y)),rect.width-8);
+  }
+  g.drop=drop;
+ }
+ function cleanup(g){g.marker?.remove();document.querySelectorAll('.drop-inside,.drop-nest-wait').forEach(el=>el.classList.remove('drop-inside','drop-nest-wait'));}
+ function commit(g){
+  const drop=g.drop,source=treeTask(g.id);if(!drop||!source||stamp(source)!==g.sourceStamp)return;
+  const focus=matrixFocus,branch=treeBranch,originalParent=C.tree(db).parents.get(g.id)||'',oldQ=C.effective(db,source).quadrant;
+  try{
+   if(drop.targetId&&!C.tree(db).nodes.has(drop.targetId))throw Error('目标已变化，请重新拖动');
+   const beforeId=getBefore(drop,g.id),message=drop.position==='inside'?'已放入子任务':drop.parentId!==originalParent?'任务分支已移动':oldQ!==drop.q?'已移动到其他象限':'已调整列表次序';
+   // Tree transactions validate field-level undo and roll back a failed local save.
+   const success=treeTransaction(message,()=>C.placeNode(db,g.id,{parentId:drop.parentId,quadrant:drop.q,beforeId}));
+   if(!success)return;
+   if(drop.parentId){C.ancestors(db,g.id).forEach(n=>treeExpanded.add(n.id));treeRemember();}
+   if(focus>=0)matrixFocus=drop.q;
+   if(treeBranch&&(g.branchIds.has(treeBranch)||oldQ!==drop.q))treeBranch='';
+   if(C.ancestors(db,g.id).length>2)treeBranch=drop.parentId;
+   render();
+   // Preserve the previous quadrant/branch when this drag is undone.
+   const undo=window.QGestures?.peekUndo?.();if(undo){const fn=undo.fn;undo.fn=()=>{const ok=fn();if(ok!==false){matrixFocus=focus;treeBranch=branch;render();}return ok;};}
+   requestAnimationFrame(()=>{const row=[...document.querySelectorAll('#main .task-row')].find(r=>r.dataset.taskId===g.id);row?.scrollIntoView({block:'nearest'});row?.classList.add('tree-highlight');});
+  }catch(e){toast(e.message);}
+ }
+ window.QDrag={start,preview,cleanup,commit};
+})();
 </script><script>/* Android-only UI. The web app does not expose launcher controls. */
 (() => {
   if (!native || typeof Native.widgetSettings !== 'function') return;

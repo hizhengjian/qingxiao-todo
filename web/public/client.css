@@ -66,3 +66,11 @@
 @media(max-width:600px){.matrix:not(.matrix-focused) .tree-toggle{width:23px;min-width:23px;flex-basis:23px}.matrix:not(.matrix-focused) .tree-node{margin-left:calc(var(--tree-depth,0)*8px)}.matrix:not(.matrix-focused) .tree-progress{font-size:10px}.matrix:not(.matrix-focused) .tree-node .task-pom{display:none}.matrix:not(.matrix-focused) .tree-add-form{flex-wrap:wrap}.matrix:not(.matrix-focused) .tree-add-form input{flex-basis:100%}}
 
 .tree-toggle{color:#52665e}.tree-node{border-left-color:#00000016}.tree-progress{color:#626e64}.tree-path{color:#6c756f}.tree-add-link,.tree-branch-link{color:#566e63}.tree-breadcrumb{background:rgba(255,255,255,.8);border-bottom-color:#00000012}.tree-breadcrumb button{color:#3d6b58}.tree-breadcrumb span{color:#747b72}.tree-actions,.tree-child-detail{border-color:#00000012}.tree-detail-path button{color:#4f7563}
+/* Drop indicators are overlays: previewing never changes row heights under the finger. */
+.task-drop-line{position:fixed;height:3px;border-radius:3px;background:#21886b;box-shadow:0 0 0 1px #fff9;z-index:99;pointer-events:none}
+.task-drop-line::before{content:'';position:absolute;left:-3px;top:-3px;width:9px;height:9px;border-radius:50%;background:#21886b}
+.task-row.drop-nest-wait{outline:2px dashed #4c9776;outline-offset:-3px;background:#ffffff35}
+.task-row.drop-inside{outline:3px solid #21886b;outline-offset:-3px;background:#ffffff85}
+.task-drag-active .task-row.dragging{opacity:.4}.task-drag-hint{white-space:normal;overflow-wrap:anywhere}
+.task-drag-active .swipe-action,.task-drag-active #toast{visibility:hidden}
+.task-row.drop-nest-wait{background:#edf5ed}.task-row.drop-inside{background:#dff3e8}

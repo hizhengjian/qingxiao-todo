@@ -119,27 +119,26 @@
     const rect = g.ghost.getBoundingClientRect();
     g.ghost.style.left = Math.max(6, Math.min(innerWidth - rect.width - 6, g.x - rect.width / 2)) + 'px';
     g.ghost.style.top = Math.max(6, Math.min(innerHeight - rect.height - 6, g.y - rect.height - 20)) + 'px';
-    document.querySelectorAll('.drop-target').forEach(q => q.classList.remove('drop-target'));
-    const target = pointInQuadrant(g.x, g.y);
-    target?.classList.add('drop-target');
-    const q = target ? Number(target.dataset.quadrant) : -1;
-    if (q !== g.target) { if (q >= 0) haptic(); g.target = q; }
-    g.hint.textContent = q < 0 ? '移到颜色区域，或松手取消' : q === task(g.id)?.quadrant ? '拖到其他颜色区域' : '松手移到：' + Q[q].replace('-', ' · ');
+    if(window.QDrag)QDrag.preview(g);
   }
-  function scrollDuringDrag() {
+  function scrollDuringDrag(time) {
     if (!gesture || gesture.mode !== 'drag') return;
     const g = gesture, list = pointInQuadrant(g.x, g.y)?.querySelector('.quad-list');
+    const elapsed=Math.min(32,Math.max(0,time-(g.frameAt||time)));g.frameAt=time;
     if (list) {
-      const r = list.getBoundingClientRect();
+      const r = list.getBoundingClientRect(),edge=Math.min(56,r.height/4);
       if (g.y >= r.top && g.y <= r.bottom) {
-        if (g.y < r.top + 32) list.scrollTop -= 7;
-        else if (g.y > r.bottom - 32) list.scrollTop += 7;
+        let speed=g.y<r.top+edge?-(r.top+edge-g.y)/edge:g.y>r.bottom-edge?(g.y-(r.bottom-edge))/edge:0;
+        if(speed)list.scrollTop+=speed*elapsed*.65;
       }
     }
+    movePreview(g);
     frame = requestAnimationFrame(scrollDuringDrag);
   }
+
   function startDrag() {
     const g = gesture, t = g && task(g.id);
+    if(!window.QDrag)return;
     if (!g || g.mode !== 'pending' || view !== 'matrix' || !t || t.deleted || t.done || t.kind === 'note' || !$('overlay').hidden) return;
     closeSwipe(); g.mode = 'drag'; g.target = -1;
     if (g.input === 'pointer') { try { g.row.setPointerCapture(g.identifier); } catch {} }
@@ -150,7 +149,7 @@
     g.ghost.setAttribute('aria-hidden', 'true');
     g.hint = document.createElement('div'); g.hint.className = 'task-drag-hint'; g.hint.setAttribute('role', 'status');
     document.body.append(g.ghost, g.hint); document.body.classList.add('task-drag-active');
-    haptic('hold'); movePreview(g); frame = requestAnimationFrame(scrollDuringDrag);
+    window.QDrag?.start(g,t);haptic('hold'); movePreview(g); frame = requestAnimationFrame(scrollDuringDrag);
   }
   function begin(e, x, y, input, identifier) {
     const row = e.target.closest('.task-row');
@@ -173,7 +172,7 @@
       else return;
     }
     if (e.cancelable) e.preventDefault();
-    if (g.mode === 'drag') { movePreview(g); return; }
+    if (g.mode === 'drag') {g.moved ||= Math.hypot(dx,dy)>8;movePreview(g); return; }
     const width = g.wrap.clientWidth;
     let offset = Math.max(-width * .9, Math.min(width * .9, g.offset + dx));
     if (task(g.id)?.deleted) offset = Math.max(0, offset);
@@ -191,7 +190,7 @@
   function clean(g) {
     clearTimeout(holdTimer); cancelAnimationFrame(frame);
     g.row.classList.remove('dragging'); g.wrap.classList.remove('swiping', 'swipe-ready');
-    g.ghost?.remove(); g.hint?.remove(); document.body.classList.remove('task-drag-active');
+    window.QDrag?.cleanup(g);g.ghost?.remove(); g.hint?.remove(); document.body.classList.remove('task-drag-active');
     document.querySelectorAll('.drop-target').forEach(q => q.classList.remove('drop-target'));
     gesture = null;
   }
@@ -203,7 +202,7 @@
   }
   function finish(e, x, y) {
     const g = gesture; if (!g) return;
-    const mode = g.mode; clean(g);
+    const mode = g.mode;if(mode==='drag'){g.x=x;g.y=y;movePreview(g);}clean(g);
     if (mode === 'pending') {
       if (g.beganOpen) { closeSwipe(); suppressClickUntil = Date.now() + 450; }
       flush(); return;
@@ -211,8 +210,7 @@
     if (e.cancelable) e.preventDefault();
     suppressClickUntil = Date.now() + 450;
     if (mode === 'drag') {
-      const q = pointInQuadrant(x, y);
-      if (q) moveQuadrant(g.id, Number(q.dataset.quadrant));
+      window.QDrag?.commit(g);
       flush(); return;
     }
     const offset = g.current || 0;
@@ -294,9 +292,9 @@
       }
     }
   };
-  window.QGestures = {act: action, cancel, close: closeSwipe};
+  window.QGestures = {act: action, cancel, close: closeSwipe, peekUndo:()=>undoStack.at(-1), active:()=>!!(gesture||opened)};
   window.gestureHelp = function () {
-    show('事项快捷操作', '<div class="gesture-guide"><p><strong>点一下放大象限</strong><br>总览中点事项文字或空白区域放大，再点事项查看详情。点其他颜色条切换，点收起按钮返回总览。</p><p><strong>长按后拖动</strong><br>按住事项约半秒，再拖到另一种颜色；看到边框高亮后松手。象限放大时也能拖到旁边的颜色条。</p><p><strong>右滑完成 · 左滑删除</strong><br>轻滑显示按钮，点击执行；滑得更远，看到“松手完成 / 删除”后松手即可执行。</p><p><strong>操作可以撤销</strong><br>完成、删除、移动后，10秒内点底部“撤销”；连续操作可逐步撤销。删除的事项也可以在设置里的回收站恢复。</p><p><strong>上下滑动照常滚动</strong><br>完成按钮、番茄按钮和更多菜单都可以直接点击。电脑也可以长按拖动，或用 Ctrl / ⌘ + Z 撤销。</p></div>');
+    show('事项快捷操作', '<div class="gesture-guide"><p><strong>点一下放大象限</strong><br>总览中点事项文字或空白区域放大，再点事项查看详情。点其他颜色条切换，点收起按钮返回总览。</p><p><strong>长按后拖动</strong><br>按住事项约半秒，上下拖动到插入线处松手，就能调整次序。主任务带上整棵分支；子任务也能同级排序。拖到另一颜色区域可移动优先级，子任务会提升为主任务。</p><p><strong>拖成子任务</strong><br>拖到目标事项右侧并稍停，出现“松手放入子任务”提示后再松手。拖到象限标题可提升为主任务；拖到列表上下边缘会自动滚动。移出区域松手或按返回可取消，操作后10秒内可撤销。</p><p><strong>右滑完成 · 左滑删除</strong><br>轻滑显示按钮，点击执行；滑得更远，看到“松手完成 / 删除”后松手即可执行。</p><p><strong>操作可以撤销</strong><br>完成、删除、移动后，10秒内点底部“撤销”；连续操作可逐步撤销。删除的事项也可以在设置里的回收站恢复。</p><p><strong>上下滑动照常滚动</strong><br>完成按钮、番茄按钮和更多菜单都可以直接点击。电脑也可以长按拖动，或用 Ctrl / ⌘ + Z 撤销。</p></div>');
   };
   const previousMatrix = matrixHtml;
   matrixHtml = function () {
