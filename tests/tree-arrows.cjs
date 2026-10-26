@@ -11,7 +11,7 @@ const out=process.env.QINGXIAO_TEST_OUTPUT||'test-results/tree-arrows';fs.mkdirS
   const preview=id=>p.locator('#main [data-tree-preview="'+id+'"]');
   async function tap(loc){const b=await loc.boundingBox();assert(b);await p.touchscreen.tap(b.x+b.width/2,b.y+b.height/2);}
   async function seed(v='timeline',done=false){await p.evaluate(({v,done})=>{
-   closePanel(true);QGestures.close();db=C.blank();treeExpanded.clear();treeBranch='';matrixScope='all';filter='all';date=Date.now();
+   timelineMode='schedule';localStorage.setItem('qingxiao-timeline-mode','schedule');closePanel(true);QGestures.close();db=C.blank();treeExpanded.clear();treeBranch='';matrixScope='all';filter='all';date=Date.now();
    const n=(id,parentId='',dueAt=0)=>({id,parentId,title:{r:'准备方案',c:'收集资料',g:'确认数据',d:'已删步骤'}[id],notes:'',kind:'task',quadrant:0,project:'工作',tags:[],photos:[],subtasks:[],done,completedAt:done?Date.now():0,deleted:id==='d',order:0,dueAt});
    db.items=[n('r','',Date.now()),n('c','r',Date.now()+86400000),n('g','c'),n('d','r')];save();go(v);
   },{v,done});}
@@ -35,7 +35,7 @@ const out=process.env.QINGXIAO_TEST_OUTPUT||'test-results/tree-arrows';fs.mkdirS
   await p.setViewportSize({width:320,height:740});await seed('matrix');await tap(row('r').locator('.tree-toggle'));assert.equal(await p.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);assert.equal(await p.evaluate(()=>db.items.some(t=>t.done)),false);checks.push('larger arrow target still fits 320px matrix and does not alter completion');
   await seed();await tap(row('r').locator('.tree-toggle'));await tap(preview('r').getByRole('button',{name:'展开子任务 收集资料',exact:true}));assert.equal(await p.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);checks.push('nested list preview fits narrow screens');
   const desktop=await browser.newPage({viewport:{width:1280,height:900}});await desktop.route('**/api/**',r=>r.fulfill({json:{records:[],acknowledgements:[]}}));await desktop.goto(process.env.QINGXIAO_TEST_URL||'http://127.0.0.1:5173/client.html');
-  const fixture=await p.evaluate(()=>db);await desktop.evaluate(data=>{db=data;treeExpanded.clear();filter='all';go('timeline');},fixture);await desktop.locator('[data-task-id="r"] .tree-toggle').click();assert.equal(await desktop.locator('[data-tree-preview="r"]').count(),1);checks.push('desktop mouse arrow expands inline');
+  const fixture=await p.evaluate(()=>db);await desktop.evaluate(data=>{db=data;timelineMode='schedule';treeExpanded.clear();filter='all';go('timeline');},fixture);await desktop.locator('[data-task-id="r"] .tree-toggle').click();assert.equal(await desktop.locator('[data-tree-preview="r"]').count(),1);checks.push('desktop mouse arrow expands inline');
   assert.deepEqual(errors,[]);fs.writeFileSync(out+'/report.json',JSON.stringify({checks,errors},null,2));console.log(JSON.stringify({checks,errors},null,2));
  } finally {await browser.close();}
 })().catch(e=>{console.error(e);process.exit(1)});

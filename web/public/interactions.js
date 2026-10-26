@@ -278,10 +278,10 @@
   };
   render = function () {
     if (gesture) { deferredRender = true; return; }
-    const reveal = opened && lastRenderedView === view ? {id: opened.dataset.swipeId, offset: Number(opened.dataset.offset)} : null;
+    const reveal = opened && lastRenderedView === view ? {id: opened.dataset.swipeId, eventKey:opened.closest('[data-activity-key]')?.dataset.activityKey, offset: Number(opened.dataset.offset)} : null;
     deferredRender = false; closeSwipe(); baseRender();
     if (reveal) {
-      const wrap = [...document.querySelectorAll('.task-swipe')].find(w => w.dataset.swipeId === reveal.id);
+      const wrap = [...document.querySelectorAll('.task-swipe')].find(w => w.dataset.swipeId === reveal.id && w.closest('[data-activity-key]')?.dataset.activityKey === reveal.eventKey);
       const b = wrap?.querySelector(reveal.offset > 0 ? '.swipe-complete' : '.swipe-delete');
       if (b) {
         opened = wrap;

@@ -16,7 +16,7 @@ const pause=ms=>new Promise(r=>setTimeout(r,ms));
   const stored=id=>p.evaluate(id=>JSON.parse(localStorage.getItem('qingxiao-v3')).items.find(t=>t.id===id),id);
   async function seed(page='timeline',status='done'){
    await p.evaluate(({page,status})=>{
-    QGestures.cancel();closePanel(true);db=C.blank();date=Date.now();filter=status;
+    timelineMode='schedule';localStorage.setItem('qingxiao-timeline-mode','schedule');QGestures.cancel();closePanel(true);db=C.blank();date=Date.now();filter=status;
     const node=(id,parentId='',done=true)=>({id,parentId,title:{root:'已完成的方案',child:'完成的步骤',open:'尚未完成'}[id],notes:'保留备注',kind:'task',quadrant:0,tags:[],subtasks:[],photos:[],done,deleted:false,completedAt:done?12345:0,dueAt:Date.now(),order:0});
     db.items=[node('root'),node('child','root'),node('open','',false)];
     save();go(page);window.qaSyncRequests=0;window.qaScheduleSync=scheduleSync;scheduleSync=()=>qaSyncRequests++;
