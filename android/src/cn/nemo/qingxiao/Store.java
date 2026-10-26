@@ -15,7 +15,7 @@ public class Store {
  public static JSONObject validate(String s) throws Exception {
   if(s.length()>20*1024*1024)throw new Exception("文件超过20MB");
   JSONObject o=new JSONObject(s);
-  if(!"qingxiao-todo".equals(o.optString("format"))||(o.optInt("version")!=1&&o.optInt("version")!=2))throw new Exception("不是轻效Todo备份格式");
+  if(!"qingxiao-todo".equals(o.optString("format"))||(o.optInt("version")!=1&&o.optInt("version")!=2&&o.optInt("version")!=3))throw new Exception("不是轻效Todo备份格式");
   JSONArray a=o.getJSONArray("items"); Set<String> ids=new HashSet<>();
   if(a.length()>50000)throw new Exception("记录数量过多");
   for(String field:new String[]{"projects","tags"}){
@@ -25,6 +25,7 @@ public class Store {
   for(int i=0;i<a.length();i++){
    JSONObject t=a.getJSONObject(i); String id=t.getString("id");
    if(id.isEmpty()||!ids.add(id)||!(t.opt("title") instanceof String)||!(t.opt("notes") instanceof String))throw new Exception("条目格式或编号异常");
+   if(t.has("parentId")&&!(t.get("parentId") instanceof String))throw new Exception("父任务编号无效");
    if(t.optInt("quadrant",-1)<0||t.optInt("quadrant",-1)>3)throw new Exception("四象限值无效");
    if(t.optLong("remindAt",0)<0||t.optLong("dueAt",0)<0)throw new Exception("日期无效");
    if(!t.optString("kind","task").equals("task")&&!t.optString("kind").equals("note"))throw new Exception("类型无效");
@@ -46,6 +47,9 @@ public class Store {
   write(c,candidate.toString());
  }
  public static synchronized void write(Context c,String s) throws Exception {validate(s);String old=read(c);if(s.equals(old))return;
+  if(new JSONObject(old).optInt("version")>=3&&new JSONObject(s).optInt("version")<3)throw new Exception("不能用旧格式覆盖多级任务，请先更新客户端");
+  File migration=new File(c.getFilesDir(),"before-tree-v3.json");
+  if(new JSONObject(old).optInt("version")<3&&new JSONObject(s).optInt("version")==3&&!migration.exists()){try(FileOutputStream backup=new FileOutputStream(migration)){backup.write(old.getBytes(StandardCharsets.UTF_8));backup.getFD().sync();}}
   File dir=new File(c.getFilesDir(),"snapshots");dir.mkdirs();
   File snap=new File(dir,System.currentTimeMillis()+".json");
   try(FileOutputStream out=new FileOutputStream(snap)){out.write(old.getBytes(StandardCharsets.UTF_8));out.getFD().sync();}

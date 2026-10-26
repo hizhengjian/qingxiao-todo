@@ -21,7 +21,7 @@ public class QuadrantWidgetService extends RemoteViewsService {
    if(AppLock.enabled(c)||position<0||position>=rows.size()){v.setTextViewText(R.id.task_title,"");v.setViewVisibility(R.id.task_meta,View.GONE);return v;}
    JSONObject t=rows.get(position);String title=t.optString("title");
    // Avoid an oversized Binder parcel from a very long task title or project name.
-   v.setTextViewText(R.id.task_title,"○  "+clip(title,expanded?1024:240));
+   v.setTextViewText(R.id.task_title,(t.optString("_treeProgress").isEmpty()?"○  ":t.optString("_treeProgress")+"  ")+clip(title,expanded?1024:240));
    v.setInt(R.id.task_title,"setMaxLines",expanded?20:1);
    v.setInt(R.id.task_meta,"setMaxLines",expanded?2:1);
    List<String> meta=new ArrayList<>();long due=t.optLong("dueAt");

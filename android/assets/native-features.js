@@ -25,7 +25,7 @@
     if (add) editItem(null, q >= 0 && q < 4 ? q : 1);
     else if (id) {
       const item = db.items.find(t => t.id === id && !t.deleted && !t.purged);
-      if (item) openItem(id);
+      if (item) { treeLocate(id); treeExpanded.add(id); render(); }
       else toast('这条事项已删除，已显示最新四象限');
     }
   };

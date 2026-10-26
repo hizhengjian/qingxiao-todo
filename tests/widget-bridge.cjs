@@ -11,7 +11,7 @@ const path=require('node:path');
   window.Native={load:()=>stored,save:s=>(stored=s,'ok'),loadEncryptedConfig(){},syncStatus:()=> '未连接云空间',timerState:()=>'{"timer":null}',lockStatus:()=> '应用密码未开启',reminderStatus:()=> '提醒已开启',appVersion:()=> '2.4.0',widgetSettings:()=>window.pinRequested=true};
  });
 
- await page.goto('file://'+path.resolve(__dirname,'../android/assets/index.html'));
+ await page.goto('file://'+path.resolve(process.env.QINGXIAO_APK_HTML||path.resolve(__dirname,'../android/assets/index.html')));
  await page.evaluate(()=>settings());
  assert.match(await page.locator('.panel-body').innerText(),/2\.4\.0/);
  await page.getByRole('button',{name:'▦ 四象限桌面小组件',exact:true}).click();
@@ -26,7 +26,7 @@ const path=require('node:path');
 
  const ids=await page.evaluate(()=>db.items.map(t=>t.id));
  await page.evaluate(id=>openWidgetTarget(2,false,id),ids[2]);
- assert.equal(await page.locator('.detail-title').innerText(),'Widget task 2');checks.push('task detail route');
+ assert.equal(await page.evaluate(()=>treeExpanded.has(db.items[2].id)),true);checks.push('widget opens and expands matching task branch');
  await page.evaluate(()=>openWidgetTarget(0,true,''));await page.locator('#edit-title').fill('Keep my draft');
  const rejected=page.waitForEvent('dialog').then(d=>d.dismiss());
  await Promise.all([rejected,page.evaluate(()=>openWidgetTarget(3,false,''))]);
@@ -36,7 +36,7 @@ const path=require('node:path');
  assert.equal(await page.evaluate(()=>matrixFocus),3);assert.equal(await page.evaluate(()=>dirty),false);assert.equal(await page.locator('#overlay').isHidden(),true);checks.push('confirm navigates to requested quadrant');
  await page.evaluate(()=>{let fresh=JSON.parse(stored);fresh.items[0].title='Background sync change';stored=JSON.stringify(fresh);});
  await page.evaluate(id=>openWidgetTarget(0,false,id),ids[0]);
- assert.equal(await page.locator('.detail-title').innerText(),'Background sync change');checks.push('route reloads latest native records');
+ assert.match(await page.locator('#main').innerText(),/Background sync change/);checks.push('route reloads latest native records');
  await page.evaluate(()=>openWidgetTarget(0,false,'deleted-task-id'));assert.match(await page.locator('#toast').innerText(),/已删除/);checks.push('stale item route is safe');
  assert.deepEqual(errors,[]);console.log(JSON.stringify({checks,errors},null,2));await browser.close();
 })().catch(e=>{console.error(e);process.exit(1)});

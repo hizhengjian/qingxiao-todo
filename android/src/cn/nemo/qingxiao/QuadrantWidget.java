@@ -30,10 +30,10 @@ public class QuadrantWidget extends AppWidgetProvider {
  static List<JSONObject> tasks(Context c) throws Exception {
   List<JSONObject> result=new ArrayList<>();
   if(AppLock.enabled(c))return result;
-  JSONArray items=new JSONObject(Store.read(c)).getJSONArray("items");
+  JSONArray items=new JSONObject(Store.read(c)).getJSONArray("items");TaskTree tree=new TaskTree(items);
   for(int n=0;n<items.length();n++){
    JSONObject t=items.getJSONObject(n);
-   if(!t.optBoolean("done")&&!t.optBoolean("deleted")&&!t.optBoolean("purged")&&!"note".equals(t.optString("kind")))result.add(t);
+   if(tree.root(t.optString("id"))&&!t.optBoolean("done")&&!t.optBoolean("deleted")&&!t.optBoolean("purged")&&!"note".equals(t.optString("kind"))){JSONObject copy=new JSONObject(t.toString());copy.put("_treeProgress",tree.progress(t.getString("id")));result.add(copy);}
   }
   result.sort(Comparator.comparingLong(t->t.optLong("order")));
   return result;
