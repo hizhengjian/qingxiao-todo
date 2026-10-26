@@ -82,6 +82,19 @@
 .task-drag-active .task-row.dragging{opacity:.4}.task-drag-hint{white-space:normal;overflow-wrap:anywhere}
 .task-drag-active .swipe-action,.task-drag-active #toast{visibility:hidden}
 .task-row.drop-nest-wait{background:#edf5ed}.task-row.drop-inside{background:#dff3e8}
+/* Dense matrix rows keep a 44px control height; details remain available on tap. */
+.matrix .task-swipe .task-row{min-height:44px}
+.matrix .task-swipe .task-open{padding:5px 3px;min-height:44px;line-height:1.3}
+.matrix .task-swipe .task-text{font-size:14px;line-height:1.3}
+.matrix:not(.matrix-focused) .task-swipe .task-text{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.matrix .task-secondary{display:block;margin-top:2px;font-size:10px;line-height:1.3;color:#667368;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.matrix .task-check{width:32px;min-width:32px;min-height:44px;font-size:21px}
+.matrix .task-swipe .task-more{width:28px;min-width:28px;min-height:44px}
+.matrix:not(.matrix-focused) .task-pom{display:none}
+.matrix.matrix-focused .task-pom{width:32px;min-width:32px;min-height:44px;font-size:20px}
+.matrix.matrix-focused .task-swipe .task-text{font-size:15px}
+.matrix .tree-add-link,.matrix .tree-branch-link{margin-top:0;margin-bottom:2px;padding-top:4px;padding-bottom:4px;min-height:32px}
+@media(min-width:850px){.matrix .task-swipe .task-text{font-size:15px}.matrix .task-secondary{font-size:11px}}
 </style></head><body>
 <div id="app"><header id="top"><button id="menu-button" aria-label="打开菜单" onclick="drawer(true)"><span class="avatar">轻</span></button><button id="page-title" onclick="chooseDate()"></button><button id="top-add" aria-label="新建" onclick="addForView()">＋</button></header><button id="sync-top" onclick="syncInfo()" aria-label="查看保存与同步状态">已存本机</button><main id="main"></main><button id="timer-bar" onclick="go('pomodoro')" hidden></button></div>
 <div id="drawer-mask" onclick="drawer(false)" hidden></div><aside id="drawer" aria-label="导航"><div class="profile"><div class="avatar large">轻</div><strong>我的私事</strong><small id="sync-label" onclick="syncNow()">本机保存</small></div><nav id="nav"></nav><footer><button onclick="go('search')" aria-label="搜索">⌕</button><button onclick="go('achievements')" aria-label="我的成就">▥</button><button onclick="settings()" aria-label="设置">⚙</button><button onclick="syncNow()" aria-label="立即同步">☁</button></footer></aside>
@@ -694,6 +707,10 @@ itemRow=function(t){const e=C.effective(db,t),x=C.tree(db),children=(x.children.
  let info=[];if(p.total)info.push(`${p.done}/${p.total} 步`+(p.done===p.total?' · 子项已完成':''));if(p.overdue)info.push(p.overdue+' 个子项逾期');if(x.issues.has(t.id))info.push('层级待整理');
  if(info.length)html=html.replace(/(<span class="task-text">[\s\S]*?<\/span>)/,`$1<small class="tree-progress">${esc(info.join(' · '))}</small>`);
  if(view!=='matrix'&&treePath(t.id))html=html.replace(/(<span class="task-text">[\s\S]*?<\/span>)/,`$1<small class="tree-path">${esc(treePath(t.id))}</small>`);
+ if(view==='matrix'){
+  const summary=[];html=html.replace(/<small class="(?:tree-progress|task-mini)">([\s\S]*?)<\/small>/g,(_,text)=>{summary.push(text);return '';});
+  if(summary.length)html=html.replace(/(<span class="task-text">[\s\S]*?<\/span>)/,`$1<small class="task-secondary">${summary.join(' · ')}</small>`);
+ }
  return html+(view!=='matrix'&&expanded&&children.length?treeInlineChildren(t.id):'');
 };
 // List previews show the branch without moving each task's own dated/search row.
@@ -749,7 +766,7 @@ const treeBaseFinish=finishChoice;finishChoice=function(action,id='',sid=''){ret
 const treeBaseQuick=quickAddQuadrant;quickAddQuadrant=function(q){let t=treeTask(treeBranch);if(!t||C.effective(db,t).quadrant!==q)return treeBaseQuick(q);treeDrafts[t.id]=matrixDrafts[q];treeQuickAdd(t.id);if(!treeDrafts[t.id])matrixDrafts[q]='';render();$('quad-input-'+q)?.focus({preventScroll:true});};
 const treeBaseRender=render;render=function(){C.invalidate();const active=document.activeElement,keep=active?.id==='tree-quick-input'?{start:active.selectionStart,end:active.selectionEnd}:null;treeBaseRender();if(view==='matrix'&&treeBranch){const el=$('quad-input-'+matrixFocus);if(el)el.placeholder='添加到此分支，回车保存';}if(keep){let el=$('tree-quick-input');if(el){el.focus({preventScroll:true});el.setSelectionRange(keep.start,keep.end);}}};
 const treeBaseBack=handleBack;handleBack=function(){if(window.QGestures?.active?.())return treeBaseBack();if($('overlay').hidden&&view==='matrix'&&treeBranch){treeLeave();return true;}return treeBaseBack();};
-const treeBaseSettings=settings;settings=function(){treeBaseSettings();const strong=$('panel').querySelector('strong');if(strong)strong.textContent='轻效 Todo · 2.6.2';};
+const treeBaseSettings=settings;settings=function(){treeBaseSettings();const strong=$('panel').querySelector('strong');if(strong)strong.textContent='轻效 Todo · 2.6.3';};
 render();
 </script><script>/* Tree-aware drop targets. Hover only previews; records change once on release. */
 (function(){
