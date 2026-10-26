@@ -29,8 +29,9 @@ export async function POST(req:Request){
   if(!Array.isArray(input.changes)||input.changes.length>100)return json({error:"同步批次格式错误"},400);
   const acknowledgements=[];
   for(const ch of input.changes){
-   if(typeof ch.id!=="string"||ch.id.length>160||!ch.id||typeof ch.opId!=="string"||ch.opId.length>160||!ch.opId||!Number.isSafeInteger(ch.baseRev)||ch.baseRev<0||!["item","session","catalog","preference"].includes(ch.kind)||!ch.data||typeof ch.data!=="object"||ch.data.id!==ch.id)throw Error("记录无效");
+   if(typeof ch.id!=="string"||ch.id.length>160||!ch.id||typeof ch.opId!=="string"||ch.opId.length>160||!ch.opId||!Number.isSafeInteger(ch.baseRev)||ch.baseRev<0||!["item","session","catalog","preference","progress"].includes(ch.kind)||!ch.data||typeof ch.data!=="object"||ch.data.id!==ch.id)throw Error("记录无效");
    if(ch.kind==='item'){if((ch.data.subtasks||[]).length)throw Error("请升级任务结构后同步");ch.data.treeVersion=3;ch.data.parentId??='';C.validate({items:[ch.data],sessions:[],catalogs:[],preferences:[]});if(ch.data.parentId===ch.id)throw Error("事项不能是自己的父任务");}
+   if(ch.kind==='progress')C.validate({items:[],sessions:[],catalogs:[],preferences:[],progress:[ch.data]});
    const migratedCreation=ch.kind==='item'&&typeof ch.data.legacyParentId==='string'&&typeof ch.data.legacySubtaskId==='string'&&C.childId(ch.data.legacyParentId,ch.data.legacySubtaskId)===ch.id;
    const payload=JSON.stringify(ch.data);if(payload.length>200000)throw Error("单条记录太大");
    const seen=await env.DB!.prepare("SELECT accepted,rev,record_id FROM receipts WHERE op_id=?").bind(ch.opId).first();

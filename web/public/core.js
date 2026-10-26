@@ -2,11 +2,11 @@
 (function(root){'use strict';
 const clone=x=>JSON.parse(JSON.stringify(x));
 const uid=()=>globalThis.crypto?.randomUUID?.()||Date.now().toString(36)+'-'+Math.random().toString(36).slice(2);
-const blank=()=>({format:'qingxiao-todo',version:3,items:[],sessions:[],catalogs:[],preferences:[],deviceId:uid()});
+const blank=()=>({format:'qingxiao-todo',version:3,items:[],sessions:[],catalogs:[],preferences:[],progress:[],deviceId:uid()});
 function normalize(x){if(!x||x.format!=='qingxiao-todo'||![1,2,3].includes(x.version)||!Array.isArray(x.items))throw Error('不是轻效Todo备份');let legacy=x.version===1;x=clone(x);x.version=3;x.sessions??=[];x.catalogs??=[];x.preferences??=[];x.deviceId??=uid();
  for(let [old,type] of [['projects','project'],['tags','tag']])for(let name of x[old]||[])if(typeof name==='string'&&!x.catalogs.some(c=>c.type===type&&c.name===name))x.catalogs.push({id:uid(),type,name,color:'#00b7e9',_dirty:true,_op:uid(),_rev:0});
  for(let t of x.items){t.notes??='';t.subtasks??=[];t.photos??=[];t.tags??=[];t.quadrant??=1;t.weight??=1;t.estimate??=0;t.kind??='task';t.subtasks.forEach(s=>{s.id??="index:"+t.subtasks.indexOf(s);s.estimate??=0;s.reminderStyle??='notification';});if(legacy)touch(t);}
- x.items=migrateItems(x.items); invalidate();validate(x);return x;}
+ x.progress??=[];x.items=migrateItems(x.items); invalidate();validate(x);return x;}
 
 // Stable legacy IDs let independently upgraded devices converge on the same nodes.
 function childId(parent,id){let a=2166136261,b=2246822519;for(let c of JSON.stringify([parent,id]).split('')){a=Math.imul(a^c.charCodeAt(0),16777619);b=Math.imul(b^c.charCodeAt(0),3266489917);}return 'child:'+ (a>>>0).toString(16).padStart(8,'0')+(b>>>0).toString(16).padStart(8,'0');}
@@ -50,20 +50,21 @@ function placeNode(db,id,{parentId='',quadrant,beforeId=null}){
  Object.assign(t,{parentId,quadrant:q,project:parent?effective(db,parent).project:old.project,order});touch(t);return true;
 }
 
-function validate(x){let all=new Set();for(let arr of ['items','sessions','catalogs','preferences']){if(!Array.isArray(x[arr])||x[arr].length>20000)throw Error('记录数量或格式不正确');for(let r of x[arr]){if(!r||typeof r.id!=='string'||!r.id||all.has(r.id))throw Error('记录编号重复或无效');all.add(r.id);}}
+function validate(x){let all=new Set();for(let arr of ['items','sessions','catalogs','preferences','progress']){let list=arr==='progress'?(x[arr]??[]):x[arr];if(!Array.isArray(list)||list.length>20000)throw Error('记录数量或格式不正确');for(let r of list){if(!r||typeof r.id!=='string'||!r.id||all.has(r.id))throw Error('记录编号重复或无效');all.add(r.id);}}
+ for(let r of x.progress||[]){if(typeof r.taskId!=='string'||!r.taskId||r.taskId.length>160||typeof r.text!=='string'||!r.text.trim()||r.text.length>4000||!Number.isFinite(r.createdAt)||r.createdAt<=0||!Number.isFinite(new Date(r.createdAt).getTime())||(r.editedAt!=null&&(!Number.isFinite(r.editedAt)||r.editedAt<0))||(r.deleted!=null&&typeof r.deleted!=='boolean'))throw Error('进展记录无效（最多4000字）');}
  for(let t of x.items){if(t.parentId!=null&&typeof t.parentId!=='string')throw Error('父任务编号无效');if(typeof t.title!=='string'||typeof t.notes!=='string'||!Number.isInteger(t.quadrant)||t.quadrant<0||t.quadrant>3||!Array.isArray(t.tags)||t.tags.some(s=>typeof s!=='string')||!Array.isArray(t.subtasks)||t.subtasks.some(s=>typeof s.text!=='string'||typeof s.id!=='string'))throw Error('待办字段无效');}
  for(let t of x.items){for(let r of [t,...t.subtasks]){for(let f of ['startAt','dueAt','remindAt'])if(r[f]!=null&&(!Number.isFinite(r[f])||r[f]<0))throw Error('日程时间无效');if(r.startAt&&r.dueAt&&r.dueAt<r.startAt)throw Error('日程结束不能早于开始');}if(!Array.isArray(t.photos||[])||(t.photos||[]).length>12||(t.photos||[]).some(p=>!p||!/^photo-[a-zA-Z0-9-]{10,80}$/.test(p.id)))throw Error('照片信息无效');}
  for(let s of x.sessions){if(!Array.isArray(s.segments)||s.segments.some(p=>!Number.isFinite(p.startAt)||!Number.isFinite(p.endAt)||p.endAt<p.startAt)||typeof s.title!=='string')throw Error('专注时间记录无效');}return x;}
-const kinds={items:'item',sessions:'session',catalogs:'catalog',preferences:'preference'},arrays=Object.fromEntries(Object.entries(kinds).map(([a,b])=>[b,a]));
+const kinds={items:'item',sessions:'session',catalogs:'catalog',preferences:'preference',progress:'progress'},arrays=Object.fromEntries(Object.entries(kinds).map(([a,b])=>[b,a]));
 function touch(r){invalidate();r.updatedAt=Date.now();r._dirty=true;r._op=uid();r._rev??=0;return r;}
-function changes(db){let result=[];for(let [array,kind]of Object.entries(kinds))for(let r of db[array])if(r._dirty){let data=clone(r);delete data._dirty;delete data._op;delete data._rev;result.push({id:r.id,kind,baseRev:r._rev||0,opId:r._op,data});}return result.slice(0,100);}
-function merge(db,response){invalidate();let ack=new Map((response.acknowledgements||[]).map(a=>[a.id,a])),conflicts=0;for(let remote of response.records||[]){let array=arrays[remote.kind];if(!array)continue;let list=db[array],index=list.findIndex(r=>r.id===remote.id),local=list[index],a=ack.get(remote.id);if(local&&(local._rev||0)>remote.rev)continue;
+function changes(db){let result=[];for(let [array,kind]of Object.entries(kinds))for(let r of db[array]||[])if(r._dirty){let data=clone(r);delete data._dirty;delete data._op;delete data._rev;result.push({id:r.id,kind,baseRev:r._rev||0,opId:r._op,data});}return result.slice(0,100);}
+function merge(db,response){invalidate();let ack=new Map((response.acknowledgements||[]).map(a=>[a.id,a])),conflicts=0;for(let remote of response.records||[]){let array=arrays[remote.kind];if(!array)continue;let list=db[array]??=[],index=list.findIndex(r=>r.id===remote.id),local=list[index],a=ack.get(remote.id);if(local&&(local._rev||0)>remote.rev)continue;
  if(local?._dirty){
   if(a&&a.opId===local._op){if(!a.accepted){let copy=clone(local);copy.id=uid();copy._rev=0;copy.conflictOf=local.id;copy.conflictAt=Date.now();if(copy.title)copy.title+='（冲突副本）';if(copy.name)copy.name+='（冲突副本）';touch(copy);list.push(copy);conflicts++;}list[index]={...remote.data,_rev:remote.rev,_dirty:false};}
   else if(a?.accepted){local._rev=Math.max(local._rev||0,a.rev);}
   // An unacknowledged local edit is retained until it is submitted against its base revision.
  }else {let r={...remote.data,_rev:remote.rev,_dirty:false};if(index<0)list.push(r);else list[index]=r;}
- }for(let a of response.acknowledgements||[]){if((response.records||[]).some(r=>r.id===a.id))continue;for(let array of Object.keys(kinds)){let local=db[array].find(r=>r.id===a.id);if(local?._dirty&&local._op===a.opId){if(a.accepted){local._rev=a.rev;local._dirty=false;}else if(a.rev===0){local._rev=0;local._op=uid();}}}}return conflicts;}
+ }for(let a of response.acknowledgements||[]){if((response.records||[]).some(r=>r.id===a.id))continue;for(let array of Object.keys(kinds)){let local=(db[array]||[]).find(r=>r.id===a.id);if(local?._dirty&&local._op===a.opId){if(a.accepted){local._rev=a.rev;local._dirty=false;}else if(a.rev===0){local._rev=0;local._op=uid();}}}}return conflicts;}
 function dayStart(value){let d=new Date(value);d.setHours(0,0,0,0);return +d;}
 function nextDay(value,n=1){let d=new Date(dayStart(value));d.setDate(d.getDate()+n);return +d;}
 function dateKey(value){let d=new Date(value);return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}

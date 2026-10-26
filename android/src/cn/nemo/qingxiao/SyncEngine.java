@@ -1,7 +1,7 @@
 package cn.nemo.qingxiao;
 import android.content.*;import org.json.*;import java.util.*;
 public class SyncEngine {
- static final String[] ARRAYS={"items","sessions","catalogs","preferences"},KINDS={"item","session","catalog","preference"};
+ static final String[] ARRAYS={"items","sessions","catalogs","preferences","progress"},KINDS={"item","session","catalog","preference","progress"};
  static JSONObject find(JSONArray a,String id)throws Exception {if(a!=null)for(int i=0;i<a.length();i++)if(id.equals(a.getJSONObject(i).optString("id")))return a.getJSONObject(i);return null;}
  static void replace(JSONArray a,JSONObject r)throws Exception{for(int i=0;i<a.length();i++)if(r.getString("id").equals(a.getJSONObject(i).getString("id"))){a.put(i,r);return;}a.put(r);}
  public static void run(Context c){if(MainActivity.foreground)return;try{for(int batch=0;batch<20;batch++){JSONArray changes=new JSONArray();synchronized(Store.class){JSONObject db=new JSONObject(Store.read(c));if(db.optInt("version")<3)return;for(int k=0;k<ARRAYS.length;k++){JSONArray a=db.optJSONArray(ARRAYS[k]);if(a==null)continue;for(int i=0;i<a.length()&&changes.length()<100;i++){JSONObject r=a.getJSONObject(i);if(!r.optBoolean("_dirty"))continue;JSONObject data=new JSONObject(r.toString());data.remove("_dirty");data.remove("_op");data.remove("_rev");changes.put(new JSONObject().put("id",r.getString("id")).put("kind",KINDS[k]).put("opId",r.getString("_op")).put("baseRev",r.optInt("_rev")).put("data",data));}}}

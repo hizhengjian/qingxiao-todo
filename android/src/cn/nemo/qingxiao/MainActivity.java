@@ -47,6 +47,8 @@ public class MainActivity extends Activity {
  public void onBackPressed(){web.evaluateJavascript("handleBack()",v->{if(!"true".equals(v))MainActivity.super.onBackPressed();});}
  void callback(String fn,String data){runOnUiThread(()->web.evaluateJavascript(fn+"("+JSONObject.quote(data)+")",null));}
  class Bridge {
+  @JavascriptInterface public void openProgressLink(String url){runOnUiThread(()->{try{Uri uri=Uri.parse(url);if(!("https".equalsIgnoreCase(uri.getScheme())||"http".equalsIgnoreCase(uri.getScheme()))||uri.getHost()==null)throw new IllegalArgumentException();startActivity(new Intent(Intent.ACTION_VIEW,uri).addCategory(Intent.CATEGORY_BROWSABLE));}catch(Exception e){callback("toast","无法打开资料链接，请检查地址或浏览器");}});}
+
   @JavascriptInterface public String appVersion(){try{return getPackageManager().getPackageInfo(getPackageName(),0).versionName;}catch(Exception e){return "2.4";}}
   @JavascriptInterface public void widgetSettings(){runOnUiThread(()->QuadrantWidget.showSettings(MainActivity.this));}
   @JavascriptInterface public void haptic(String kind){runOnUiThread(()->web.performHapticFeedback("hold".equals(kind)?android.view.HapticFeedbackConstants.LONG_PRESS:android.view.HapticFeedbackConstants.CLOCK_TICK));}
