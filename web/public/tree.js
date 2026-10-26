@@ -4,7 +4,7 @@ let treeExpanded=new Set();try{treeExpanded=new Set(JSON.parse(localStorage.getI
 const treeTask=id=>db.items.find(t=>t.id===id);
 const treePath=id=>C.ancestors(db,id).map(t=>t.title).join(' / ');
 function treeRemember(){try{localStorage.setItem('qingxiao-tree-expanded',JSON.stringify([...treeExpanded].slice(-5000)));}catch{}}
-function treeToggle(id){if(view!=='matrix'){openItem(id);return;}if(treeExpanded.has(id))treeExpanded.delete(id);else treeExpanded.add(id);treeRemember();render();}
+function treeToggle(id){if(treeExpanded.has(id))treeExpanded.delete(id);else treeExpanded.add(id);treeRemember();render();}
 function treeEnter(id){treeBranch=id;treeExpanded.add(id);treeRemember();const t=treeTask(id);if(!t)return;matrixFocus=C.effective(db,t).quadrant;view='matrix';closePanel(true);render();}
 function treeLeave(){treeBranch='';render();}
 function treeLocate(id){const t=treeTask(id);if(!t)return;C.ancestors(db,id).forEach(n=>treeExpanded.add(n.id));treeExpanded.add(id);treeRemember();let a=C.ancestors(db,id);treeBranch=a.length>2?a.at(-1).id:'';matrixScope='all';matrixFocus=C.effective(db,t).quadrant;view='matrix';closePanel(true);render();requestAnimationFrame(()=>{let row=[...document.querySelectorAll('#main .task-row')].find(r=>r.dataset.taskId===id);row?.scrollIntoView({block:'center'});row?.classList.add('tree-highlight');});}
@@ -18,8 +18,19 @@ itemRow=function(t){const e=C.effective(db,t),x=C.tree(db),children=(x.children.
  let info=[];if(p.total)info.push(`${p.done}/${p.total} 步`+(p.done===p.total?' · 子项已完成':''));if(p.overdue)info.push(p.overdue+' 个子项逾期');if(x.issues.has(t.id))info.push('层级待整理');
  if(info.length)html=html.replace(/(<span class="task-text">[\s\S]*?<\/span>)/,`$1<small class="tree-progress">${esc(info.join(' · '))}</small>`);
  if(view!=='matrix'&&treePath(t.id))html=html.replace(/(<span class="task-text">[\s\S]*?<\/span>)/,`$1<small class="tree-path">${esc(treePath(t.id))}</small>`);
- return html;
+ return html+(view!=='matrix'&&expanded&&children.length?treeInlineChildren(t.id):'');
 };
+// List previews show the branch without moving each task's own dated/search row.
+function treeInlineChildren(id){
+ const x=C.tree(db),children=n=>(x.children.get(n)||[]).filter(t=>!x.deleted.get(t.id));
+ const direct=children(id),stack=direct.slice().reverse().map(t=>({t,depth:0}));let rows='';
+ while(stack.length){const {t,depth}=stack.pop(),nested=children(t.id),expanded=treeExpanded.has(t.id);
+  const arrow=nested.length?`<button class="tree-toggle" aria-label="${expanded?'收起':'展开'}子任务 ${esc(t.title)}" aria-expanded="${expanded}" onclick="treeToggle(${arg(t.id)})">${expanded?'▾':'▸'}</button>`:'<span class="tree-spacer"></span>';
+  rows+=`<div class="tree-preview-row ${t.done?'done':''}" style="--tree-depth:${Math.min(depth,2)}">${arrow}<span class="tree-preview-state" aria-hidden="true">${t.done?'✓':'○'}</span><button class="tree-preview-open" aria-label="查看子任务 ${esc(t.title)}" onclick="openItem(${arg(t.id)})"><strong>${esc(t.title)}</strong><small>${t.done?'已完成 · ':''}${t.dueAt?esc(longDate(t.dueAt)):'未安排'}${nested.length?' · '+nested.length+' 个子任务':''}</small></button></div>`;
+  if(expanded)for(let i=nested.length-1;i>=0;i--)stack.push({t:nested[i],depth:depth+1});
+ }
+ return `<section class="tree-inline-children" data-tree-preview="${esc(id)}" aria-label="${esc(x.nodes.get(id).title)}的子任务"><div class="tree-preview-label">子任务 · ${direct.length}</div>${rows}</section>`;
+}
 function treeRows(t,depth=0){let x=C.tree(db),html=`<div class="tree-node" style="--tree-depth:${depth}">${itemRow(t)}</div>`;if(!treeExpanded.has(t.id)||t.deleted)return html;
  let children=(x.children.get(t.id)||[]).filter(c=>!x.deleted.get(c.id));if(depth>=2&&children.length)return html+`<button class="tree-branch-link" onclick="treeEnter(${arg(t.id)})">↳ 查看此分支 · ${children.length} 个子任务 ›</button>`;
  html+=children.map(c=>treeRows(c,depth+1)).join('');
@@ -62,5 +73,5 @@ const treeBaseFinish=finishChoice;finishChoice=function(action,id='',sid=''){ret
 const treeBaseQuick=quickAddQuadrant;quickAddQuadrant=function(q){let t=treeTask(treeBranch);if(!t||C.effective(db,t).quadrant!==q)return treeBaseQuick(q);treeDrafts[t.id]=matrixDrafts[q];treeQuickAdd(t.id);if(!treeDrafts[t.id])matrixDrafts[q]='';render();$('quad-input-'+q)?.focus({preventScroll:true});};
 const treeBaseRender=render;render=function(){C.invalidate();const active=document.activeElement,keep=active?.id==='tree-quick-input'?{start:active.selectionStart,end:active.selectionEnd}:null;treeBaseRender();if(view==='matrix'&&treeBranch){const el=$('quad-input-'+matrixFocus);if(el)el.placeholder='添加到此分支，回车保存';}if(keep){let el=$('tree-quick-input');if(el){el.focus({preventScroll:true});el.setSelectionRange(keep.start,keep.end);}}};
 const treeBaseBack=handleBack;handleBack=function(){if(window.QGestures?.active?.())return treeBaseBack();if($('overlay').hidden&&view==='matrix'&&treeBranch){treeLeave();return true;}return treeBaseBack();};
-const treeBaseSettings=settings;settings=function(){treeBaseSettings();const strong=$('panel').querySelector('strong');if(strong)strong.textContent='轻效 Todo · 2.6.1';};
+const treeBaseSettings=settings;settings=function(){treeBaseSettings();const strong=$('panel').querySelector('strong');if(strong)strong.textContent='轻效 Todo · 2.6.2';};
 render();

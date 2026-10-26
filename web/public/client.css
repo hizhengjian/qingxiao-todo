@@ -46,8 +46,9 @@
 /* Nested tasks retain usable tap targets and stop indenting after two levels. */
 .tree-node{margin-left:calc(var(--tree-depth,0)*14px);position:relative;border-left:1px solid #ffffff18}
 .tree-node[style="--tree-depth:0"]{border-left:0}
-.tree-toggle,.tree-spacer{width:28px;min-width:28px;flex:0 0 28px;display:inline-flex;align-items:center;justify-content:center;color:var(--q);font-size:18px}
-.tree-toggle{min-height:40px;padding:0;border:0;background:transparent;touch-action:manipulation}
+.tree-toggle,.tree-spacer{width:40px;min-width:40px;flex:0 0 40px;display:inline-flex;align-items:center;justify-content:center;color:var(--q);font-size:18px}
+.tree-toggle{min-height:44px;padding:0;border:0;background:transparent;touch-action:manipulation}
+.tree-toggle:focus-visible{outline:2px solid #527d68;outline-offset:-3px;border-radius:5px}
 .tree-spacer{width:8px;min-width:8px;flex-basis:8px}
 .tree-progress,.tree-path{display:block;font-size:11px;line-height:1.5;color:#aaa;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .tree-progress{color:#d4d4d4}.tree-path{color:#9197a2}
@@ -63,7 +64,14 @@
 .tree-child-detail{display:flex;align-items:center;gap:3px;border-top:1px solid #ffffff12;padding:6px 0}.tree-child-detail button{background:transparent;border:0;padding:8px;min-width:32px}.tree-child-detail button:nth-child(2){flex:1;min-width:0;text-align:left;overflow-wrap:anywhere}.tree-child-detail strong{font-size:14px;font-weight:500}
 .tree-detail-path button{background:transparent;border:0;color:#a6bcd7;text-align:left;font-size:12px;padding:6px 0;overflow-wrap:anywhere}.tree-detail-children h3{font-size:14px;margin-top:16px}
 .tree-highlight{animation:tree-highlight 2s ease-out}@keyframes tree-highlight{from{background:#ffffff30}to{background:transparent}}
-@media(max-width:600px){.matrix:not(.matrix-focused) .tree-toggle{width:23px;min-width:23px;flex-basis:23px}.matrix:not(.matrix-focused) .tree-node{margin-left:calc(var(--tree-depth,0)*8px)}.matrix:not(.matrix-focused) .tree-progress{font-size:10px}.matrix:not(.matrix-focused) .tree-node .task-pom{display:none}.matrix:not(.matrix-focused) .tree-add-form{flex-wrap:wrap}.matrix:not(.matrix-focused) .tree-add-form input{flex-basis:100%}}
+@media(max-width:600px){.matrix:not(.matrix-focused) .tree-toggle{width:32px;min-width:32px;flex-basis:32px}.matrix:not(.matrix-focused) .tree-node{margin-left:calc(var(--tree-depth,0)*8px)}.matrix:not(.matrix-focused) .tree-progress{font-size:10px}.matrix:not(.matrix-focused) .tree-node .task-pom{display:none}.matrix:not(.matrix-focused) .tree-add-form{flex-wrap:wrap}.matrix:not(.matrix-focused) .tree-add-form input{flex-basis:100%}}
+.tree-inline-children{margin:0 12px 10px 20px;border-left:2px solid #d9e4dc;background:#f6f8f5;padding:4px 6px 6px}
+.tree-preview-label{padding:5px 8px;font-size:11px;color:#68766b}
+.tree-preview-row{display:flex;align-items:center;margin-left:calc(var(--tree-depth)*12px);min-width:0}
+.tree-preview-state{flex:0 0 20px;color:#527d68;font-size:17px;text-align:center}
+.tree-preview-open{flex:1;min-width:0;min-height:48px;text-align:left;padding:8px;background:transparent;overflow-wrap:anywhere}
+.tree-preview-open strong{display:block;font-weight:400;font-size:14px}.tree-preview-open small{display:block;font-size:11px;color:#768175;margin-top:3px}
+.tree-preview-row.done strong{color:#818a80;text-decoration:line-through}
 
 .tree-toggle{color:#52665e}.tree-node{border-left-color:#00000016}.tree-progress{color:#626e64}.tree-path{color:#6c756f}.tree-add-link,.tree-branch-link{color:#566e63}.tree-breadcrumb{background:rgba(255,255,255,.8);border-bottom-color:#00000012}.tree-breadcrumb button{color:#3d6b58}.tree-breadcrumb span{color:#747b72}.tree-actions,.tree-child-detail{border-color:#00000012}.tree-detail-path button{color:#4f7563}
 /* Drop indicators are overlays: previewing never changes row heights under the finger. */
